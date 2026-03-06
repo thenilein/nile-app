@@ -1,247 +1,220 @@
--- 20260307010416_init_schema.sql
--- Migration: Nile Ice Creams Initial Schema
--- Includes Tables, Relations, RLS Policies, and Auth Triggers
+-- Nile Ice Creams Initial Schema
 
--- Enable UUID extension if not already enabled
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- Enable required extension
+create extension if not exists pgcrypto;
 
 -------------------------------------------------------------------------------
--- 1. TABLES
+-- TABLES
 -------------------------------------------------------------------------------
 
--- PROFILES (Syncs with auth.users)
-CREATE TABLE IF NOT EXISTS public.profiles (
-    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    full_name TEXT,
-    avatar_url TEXT,
-    role TEXT DEFAULT 'user' CHECK (role IN ('user', 'admin')),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+-- PROFILES
+create table if not exists public.profiles (
+    id uuid primary key references auth.users(id) on delete cascade,
+    full_name text,
+    avatar_url text,
+    role text default 'user' check (role in ('user','admin')),
+    created_at timestamptz default now(),
+    updated_at timestamptz default now()
 );
 
 -- CATEGORIES
-CREATE TABLE IF NOT EXISTS public.categories (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name TEXT NOT NULL,
-    slug TEXT UNIQUE NOT NULL,
-    description TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+create table if not exists public.categories (
+    id uuid primary key default gen_random_uuid(),
+    name text not null,
+    slug text unique not null,
+    description text,
+    created_at timestamptz default now(),
+    updated_at timestamptz default now()
 );
 
 -- PRODUCTS
-CREATE TABLE IF NOT EXISTS public.products (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    category_id UUID REFERENCES public.categories(id) ON DELETE SET NULL,
-    name TEXT NOT NULL,
-    description TEXT,
-    price DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
-    image_url TEXT,
-    is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+create table if not exists public.products (
+    id uuid primary key default gen_random_uuid(),
+    category_id uuid references public.categories(id) on delete set null,
+    name text not null,
+    description text,
+    price numeric(10,2) not null default 0,
+    image_url text,
+    is_active boolean default true,
+    created_at timestamptz default now(),
+    updated_at timestamptz default now()
 );
 
 -- ADDRESSES
-CREATE TABLE IF NOT EXISTS public.addresses (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    profile_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    street TEXT NOT NULL,
-    locality TEXT NOT NULL,
-    city TEXT,
-    state TEXT,
-    postal_code TEXT,
-    lat DECIMAL(10, 8),
-    lng DECIMAL(11, 8),
-    is_default BOOLEAN DEFAULT false,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+create table if not exists public.addresses (
+    id uuid primary key default gen_random_uuid(),
+    profile_id uuid references public.profiles(id) on delete cascade,
+    street text not null,
+    locality text not null,
+    city text,
+    state text,
+    postal_code text,
+    lat numeric(10,8),
+    lng numeric(11,8),
+    is_default boolean default false,
+    created_at timestamptz default now(),
+    updated_at timestamptz default now()
 );
 
 -- ORDERS
-CREATE TABLE IF NOT EXISTS public.orders (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    profile_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    address_id UUID REFERENCES public.addresses(id) ON DELETE SET NULL,
-    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'out_for_delivery', 'delivered', 'cancelled')),
-    total_amount DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
-    payment_status TEXT DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid', 'paid', 'refunded')),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+create table if not exists public.orders (
+    id uuid primary key default gen_random_uuid(),
+    profile_id uuid references public.profiles(id) on delete cascade,
+    address_id uuid references public.addresses(id) on delete set null,
+    status text default 'pending',
+    total_amount numeric(10,2) default 0,
+    payment_status text default 'unpaid',
+    created_at timestamptz default now(),
+    updated_at timestamptz default now()
 );
 
 -- ORDER ITEMS
-CREATE TABLE IF NOT EXISTS public.order_items (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    order_id UUID NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
-    product_id UUID REFERENCES public.products(id) ON DELETE SET NULL,
-    quantity INTEGER NOT NULL CHECK (quantity > 0),
-    price_at_purchase DECIMAL(10, 2) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+create table if not exists public.order_items (
+    id uuid primary key default gen_random_uuid(),
+    order_id uuid references public.orders(id) on delete cascade,
+    product_id uuid references public.products(id) on delete set null,
+    quantity integer not null,
+    price_at_purchase numeric(10,2) not null,
+    created_at timestamptz default now()
 );
 
--- ENQUIRIES (Support/Contact)
-CREATE TABLE IF NOT EXISTS public.enquiries (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name TEXT NOT NULL,
-    email TEXT NOT NULL,
-    message TEXT NOT NULL,
-    status TEXT DEFAULT 'new' CHECK (status IN ('new', 'read', 'resolved')),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+-- ENQUIRIES
+create table if not exists public.enquiries (
+    id uuid primary key default gen_random_uuid(),
+    name text not null,
+    email text not null,
+    message text not null,
+    status text default 'new',
+    created_at timestamptz default now(),
+    updated_at timestamptz default now()
 );
 
--- SETTINGS (Admin Config)
-CREATE TABLE IF NOT EXISTS public.settings (
-    key TEXT PRIMARY KEY,
-    value JSONB NOT NULL,
-    description TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+-- SETTINGS
+create table if not exists public.settings (
+    key text primary key,
+    value jsonb not null,
+    description text,
+    created_at timestamptz default now(),
+    updated_at timestamptz default now()
 );
 
 -------------------------------------------------------------------------------
--- 2. SUPABASE AUTH TRIGGERS (Auto-create profile)
+-- AUTH TRIGGER (AUTO CREATE PROFILE)
 -------------------------------------------------------------------------------
 
--- Function to handle new user signup
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
-BEGIN
-  INSERT INTO public.profiles (id, full_name, avatar_url)
-  VALUES (
-    NEW.id,
-    NEW.raw_user_meta_data->>'full_name',
-    NEW.raw_user_meta_data->>'avatar_url'
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+as $$
+begin
+  insert into public.profiles (id, full_name, avatar_url)
+  values (
+    new.id,
+    new.raw_user_meta_data->>'full_name',
+    new.raw_user_meta_data->>'avatar_url'
   );
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+  return new;
+end;
+$$;
 
--- Trigger to call the function after an auth.user is created
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
+drop trigger if exists on_auth_user_created on auth.users;
 
--- Trigger for updating `updated_at` columns automatically
-CREATE OR REPLACE FUNCTION public.handle_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = timezone('utc'::text, now());
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Apply updated_at triggers
-DO $$ 
-DECLARE 
-    t TEXT;
-BEGIN
-    FOR t IN 
-        SELECT table_name FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        AND column_name = 'updated_at' 
-        AND table_name IN ('profiles', 'categories', 'products', 'addresses', 'orders', 'enquiries', 'settings')
-    LOOP
-        EXECUTE format('DROP TRIGGER IF EXISTS set_updated_at ON public.%I', t);
-        EXECUTE format('CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.%I FOR EACH ROW EXECUTE PROCEDURE public.handle_updated_at();', t);
-    END LOOP;
-END $$;
-
+create trigger on_auth_user_created
+after insert on auth.users
+for each row
+execute procedure public.handle_new_user();
 
 -------------------------------------------------------------------------------
--- 3. ROW LEVEL SECURITY (RLS)
+-- UPDATED_AT TRIGGER
 -------------------------------------------------------------------------------
 
--- Enable RLS for all tables
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.addresses ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.enquiries ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
+create or replace function public.handle_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
 
--- Helper Function to check if user is admin
-CREATE OR REPLACE FUNCTION public.is_admin()
-RETURNS BOOLEAN AS $$
-BEGIN
-  RETURN EXISTS (
-    SELECT 1 FROM public.profiles
-    WHERE id = auth.uid() AND role = 'admin'
+create trigger update_profiles_updated_at
+before update on public.profiles
+for each row execute procedure public.handle_updated_at();
+
+create trigger update_categories_updated_at
+before update on public.categories
+for each row execute procedure public.handle_updated_at();
+
+create trigger update_products_updated_at
+before update on public.products
+for each row execute procedure public.handle_updated_at();
+
+create trigger update_orders_updated_at
+before update on public.orders
+for each row execute procedure public.handle_updated_at();
+
+-------------------------------------------------------------------------------
+-- ROW LEVEL SECURITY
+-------------------------------------------------------------------------------
+
+alter table public.profiles enable row level security;
+alter table public.categories enable row level security;
+alter table public.products enable row level security;
+alter table public.addresses enable row level security;
+alter table public.orders enable row level security;
+alter table public.order_items enable row level security;
+alter table public.enquiries enable row level security;
+alter table public.settings enable row level security;
+
+-------------------------------------------------------------------------------
+-- ADMIN CHECK FUNCTION
+-------------------------------------------------------------------------------
+
+create or replace function public.is_admin()
+returns boolean
+language plpgsql
+security definer
+as $$
+begin
+  return exists (
+    select 1 from public.profiles
+    where id = auth.uid() and role = 'admin'
   );
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+end;
+$$;
 
--- Profiles Policies
-DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
-CREATE POLICY "Users can view own profile" ON public.profiles FOR SELECT USING (auth.uid() = id OR public.is_admin());
+-------------------------------------------------------------------------------
+-- BASIC POLICIES
+-------------------------------------------------------------------------------
 
-DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
-CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
+create policy "public read categories"
+on public.categories
+for select
+using (true);
 
-DROP POLICY IF EXISTS "Admins can manage all profiles" ON public.profiles;
-CREATE POLICY "Admins can manage all profiles" ON public.profiles FOR ALL USING (public.is_admin());
+create policy "public read products"
+on public.products
+for select
+using (true);
 
--- Categories & Products Policies
-DROP POLICY IF EXISTS "Categories are viewable by everyone" ON public.categories;
-CREATE POLICY "Categories are viewable by everyone" ON public.categories FOR SELECT USING (true);
+create policy "users view own profile"
+on public.profiles
+for select
+using (auth.uid() = id);
 
-DROP POLICY IF EXISTS "Admins can manage categories" ON public.categories;
-CREATE POLICY "Admins can manage categories" ON public.categories FOR ALL USING (public.is_admin());
+create policy "users update own profile"
+on public.profiles
+for update
+using (auth.uid() = id);
 
-DROP POLICY IF EXISTS "Products are viewable by everyone" ON public.products;
-CREATE POLICY "Products are viewable by everyone" ON public.products FOR SELECT USING (true);
+create policy "users create orders"
+on public.orders
+for insert
+with check (auth.uid() = profile_id);
 
-DROP POLICY IF EXISTS "Admins can manage products" ON public.products;
-CREATE POLICY "Admins can manage products" ON public.products FOR ALL USING (public.is_admin());
-
--- Addresses Policies
-DROP POLICY IF EXISTS "Users can view own addresses" ON public.addresses;
-CREATE POLICY "Users can view own addresses" ON public.addresses FOR SELECT USING (auth.uid() = profile_id OR public.is_admin());
-
-DROP POLICY IF EXISTS "Users can insert own addresses" ON public.addresses;
-CREATE POLICY "Users can insert own addresses" ON public.addresses FOR INSERT WITH CHECK (auth.uid() = profile_id);
-
-DROP POLICY IF EXISTS "Users can update own addresses" ON public.addresses;
-CREATE POLICY "Users can update own addresses" ON public.addresses FOR UPDATE USING (auth.uid() = profile_id);
-
-DROP POLICY IF EXISTS "Users can delete own addresses" ON public.addresses;
-CREATE POLICY "Users can delete own addresses" ON public.addresses FOR DELETE USING (auth.uid() = profile_id);
-
--- Orders Policies
-DROP POLICY IF EXISTS "Users can view own orders" ON public.orders;
-CREATE POLICY "Users can view own orders" ON public.orders FOR SELECT USING (auth.uid() = profile_id OR public.is_admin());
-
-DROP POLICY IF EXISTS "Users can insert own orders" ON public.orders;
-CREATE POLICY "Users can insert own orders" ON public.orders FOR INSERT WITH CHECK (auth.uid() = profile_id);
-
-DROP POLICY IF EXISTS "Admins can update orders" ON public.orders;
-CREATE POLICY "Admins can update orders" ON public.orders FOR UPDATE USING (public.is_admin());
-
--- Order Items Policies
-DROP POLICY IF EXISTS "Users can view own order items via orders" ON public.order_items;
-CREATE POLICY "Users can view own order items via orders" ON public.order_items FOR SELECT USING (
-    EXISTS (SELECT 1 FROM public.orders WHERE public.orders.id = order_items.order_id AND (public.orders.profile_id = auth.uid() OR public.is_admin()))
-);
-
-DROP POLICY IF EXISTS "Users can insert order items via orders" ON public.order_items;
-CREATE POLICY "Users can insert order items via orders" ON public.order_items FOR INSERT WITH CHECK (
-    EXISTS (SELECT 1 FROM public.orders WHERE public.orders.id = order_items.order_id AND public.orders.profile_id = auth.uid())
-);
-
--- Enquiries Policies
-DROP POLICY IF EXISTS "Anyone can submit an enquiry" ON public.enquiries;
-CREATE POLICY "Anyone can submit an enquiry" ON public.enquiries FOR INSERT WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Only admins can view/manage enquiries" ON public.enquiries;
-CREATE POLICY "Only admins can view/manage enquiries" ON public.enquiries FOR ALL USING (public.is_admin());
-
--- Settings Policies
-DROP POLICY IF EXISTS "Anyone can read settings" ON public.settings;
-CREATE POLICY "Anyone can read settings" ON public.settings FOR SELECT USING (true);
-
-DROP POLICY IF EXISTS "Only admins can manage settings" ON public.settings;
-CREATE POLICY "Only admins can manage settings" ON public.settings FOR ALL USING (public.is_admin());
+create policy "users view own orders"
+on public.orders
+for select
+using (auth.uid() = profile_id);
