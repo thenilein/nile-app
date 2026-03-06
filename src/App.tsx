@@ -4,7 +4,7 @@ const Navbar = () => {
     return (
         <nav className="flex justify-evenly items-center px-10 py-4 shadow-md bg-white">
             <div className="text-2xl font-bold text-starbucks">
-                Nile Cafe
+                Nile
             </div>
             <div className="flex gap-6 font-medium">
                 {["Home", "Menu", "Rewards", "Stores"].map((item) => (
