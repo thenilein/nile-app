@@ -1,112 +1,75 @@
 import React from "react";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import Navbar from "./components/Navbar";
+import Landing from "./pages/Landing";
+import Login from "./pages/Login";
+import Signup from "./pages/Signup";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 
-const Navbar = () => {
-    return (
-        <nav className="flex justify-evenly items-center px-10 py-4 shadow-md bg-white">
-            <div className="text-2xl font-bold text-starbucks">
-                Nile
-            </div>
-            <div className="flex gap-6 font-medium">
-                {["Home", "Menu", "Rewards", "Stores"].map((item) => (
-                    <a
-                        key={item}
-                        href="#"
-                        className=""
-                    >
-                        {item}
-                    </a>
-                ))}
-            </div>
-        </nav>
-    );
+// Component to protect authenticated routes (if needed in future)
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+    const { user, isLoading } = useAuth();
+
+    if (isLoading) {
+        return <div className="flex-1 flex justify-center items-center h-screen">Loading...</div>;
+    }
+
+    if (!user) {
+        return <Navigate to="/login" replace />;
+    }
+
+    return children;
 };
 
-const Hero = () => {
-    return (
-        <section className="grid md:grid-cols-2 items-center px-10 py-20 bg-green-50">
-            <div>
-                <h1 className="text-5xl font-bold mb-6">
-                    Brewed for those who love coffee
-                </h1>
+// Component to redirect authenticated users away from auth pages
+const AuthRoute = ({ children }: { children: React.ReactNode }) => {
+    const { user, isLoading } = useAuth();
 
-                <p className="text-lg mb-6 text-gray-600">
-                    Discover handcrafted beverages and delicious food.
-                    Order ahead and skip the line.
-                </p>
+    if (isLoading) {
+        return <div className="flex-1 flex justify-center items-center h-screen">Loading...</div>;
+    }
 
-                <button className="bg-starbucks text-white px-6 py-3 rounded-full">
-                    Explore Menu
-                </button>
-            </div>
+    if (user) {
+        return <Navigate to="/" replace />;
+    }
 
-            <img
-                className="rounded-xl shadow-lg"
-                src="https://images.unsplash.com/photo-1509042239860-f550ce710b93"
-            />
-        </section>
-    );
+    return children;
 };
 
-const MenuSection = () => {
-    const items = [
-        {
-            name: "Cappuccino",
-            price: "₹280",
-            img: "https://images.unsplash.com/photo-1509042239860-f550ce710b93"
-        },
-        {
-            name: "Cold Brew",
-            price: "₹320",
-            img: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085"
-        },
-        {
-            name: "Latte",
-            price: "₹300",
-            img: "https://images.unsplash.com/photo-1511920170033-f8396924c348"
-        }
-    ];
-
+const AppRoutes = () => {
     return (
-        <section className="px-10 py-20">
-            <h2 className="text-3xl font-bold mb-10 text-center">
-                Popular Drinks
-            </h2>
-
-            <div className="grid md:grid-cols-3 gap-8">
-                {items.map((item) => (
-                    <div
-                        key={item.name}
-                        className="bg-white rounded-xl shadow-md overflow-hidden"
-                    >
-                        <img src={item.img} className="h-56 w-full object-cover" />
-
-                        <div className="p-6">
-                            <h3 className="text-xl font-semibold">
-                                {item.name}
-                            </h3>
-
-                            <p className="text-gray-500 mb-3">
-                                {item.price}
-                            </p>
-
-                            <button className="bg-starbucks text-white px-4 py-2 rounded-full">
-                                Add to Cart
-                            </button>
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </section>
+        <div className="min-h-screen bg-white font-sans flex flex-col items-stretch">
+            <Navbar />
+            <Routes>
+                <Route path="/" element={<Landing />} />
+                <Route
+                    path="/login"
+                    element={
+                        <AuthRoute>
+                            <Login />
+                        </AuthRoute>
+                    }
+                />
+                <Route
+                    path="/signup"
+                    element={
+                        <AuthRoute>
+                            <Signup />
+                        </AuthRoute>
+                    }
+                />
+            </Routes>
+        </div>
     );
 };
 
 const App = () => {
     return (
-        <div className="font-sans">
-            <Navbar />
-            <Hero />
-            <MenuSection />
-        </div>
+        <AuthProvider>
+            <Router>
+                <AppRoutes />
+            </Router>
+        </AuthProvider>
     );
 };
 
