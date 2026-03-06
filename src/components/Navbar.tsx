@@ -43,20 +43,12 @@ const Navbar = () => {
                             </button>
                         </div>
                     ) : (
-                        <>
-                            <button
-                                onClick={() => openAuthModal('login')}
-                                className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
-                            >
-                                Log in
-                            </button>
-                            <button
-                                onClick={() => openAuthModal('signup')}
-                                className="px-4 py-2 text-sm font-medium text-white bg-green-800 hover:bg-green-900 rounded-md transition-colors cursor-pointer"
-                            >
-                                Sign up
-                            </button>
-                        </>
+                        <button
+                            onClick={() => openAuthModal('login')}
+                            className="px-4 py-2 text-sm font-medium text-white bg-green-800 hover:bg-green-900 rounded-md transition-colors cursor-pointer"
+                        >
+                            Log in
+                        </button>
                     )}
                 </div>
             </nav>
