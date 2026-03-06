@@ -2,21 +2,21 @@ import React from "react";
 
 const Navbar = () => {
     return (
-        <nav className="flex justify-between items-center px-10 py-4 shadow-md bg-white">
+        <nav className="flex justify-evenly items-center px-10 py-4 shadow-md bg-white">
             <div className="text-2xl font-bold text-starbucks">
-                Starbucks
+                Nile Cafe
             </div>
-
             <div className="flex gap-6 font-medium">
-                <a href="#" className="hover:text-starbucks">Home</a>
-                <a href="#" className="hover:text-starbucks">Menu</a>
-                <a href="#" className="hover:text-starbucks">Rewards</a>
-                <a href="#" className="hover:text-starbucks">Stores</a>
+                {["Home", "Menu", "Rewards", "Stores"].map((item) => (
+                    <a
+                        key={item}
+                        href="#"
+                        className=""
+                    >
+                        {item}
+                    </a>
+                ))}
             </div>
-
-            <button className="bg-starbucks text-white px-5 py-2 rounded-full">
-                Order Now
-            </button>
         </nav>
     );
 };
