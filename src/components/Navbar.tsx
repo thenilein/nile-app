@@ -22,7 +22,7 @@ const Navbar = () => {
                     <div className="flex items-center gap-4">
                         <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
                             <UserIcon className="w-4 h-4" />
-                            <span className="hidden sm:inline-block truncate max-w-[150px]">{user.email}</span>
+                            <span className="hidden sm:inline-block truncate max-w-[150px]">{user.email || user.phone || 'Signed in'}</span>
                         </div>
                         <button
                             onClick={signOut}
@@ -33,20 +33,12 @@ const Navbar = () => {
                         </button>
                     </div>
                 ) : (
-                    <>
-                        <Link
-                            to="/login"
-                            className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
-                        >
-                            Log in
-                        </Link>
-                        <Link
-                            to="/signup"
-                            className="px-4 py-2 text-sm font-medium text-white bg-green-800 hover:bg-green-900 rounded-md transition-colors"
-                        >
-                            Sign up
-                        </Link>
-                    </>
+                    <Link
+                        to="/login"
+                        className="px-4 py-2 text-sm font-medium text-white bg-green-800 hover:bg-green-900 rounded-md transition-colors"
+                    >
+                        Log in
+                    </Link>
                 )}
             </div>
         </nav>

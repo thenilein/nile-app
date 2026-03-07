@@ -3,7 +3,6 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import Navbar from "./components/Navbar";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
-import Signup from "./pages/Signup";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { LocationProvider } from "./context/LocationContext";
 
@@ -48,14 +47,6 @@ const AppRoutes = () => {
                     element={
                         <AuthRoute>
                             <Login />
-                        </AuthRoute>
-                    }
-                />
-                <Route
-                    path="/signup"
-                    element={
-                        <AuthRoute>
-                            <Signup />
                         </AuthRoute>
                     }
                 />
