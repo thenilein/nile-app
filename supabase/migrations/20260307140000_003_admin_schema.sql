@@ -37,6 +37,7 @@ create table if not exists public.promotions (
 create index if not exists idx_promotions_code on public.promotions(code);
 create index if not exists idx_promotions_active on public.promotions(is_active);
 
+drop trigger if exists update_promotions_updated_at on public.promotions;
 create trigger update_promotions_updated_at
 before update on public.promotions
 for each row execute procedure public.handle_updated_at();
