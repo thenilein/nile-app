@@ -27,38 +27,39 @@ const Navbar = () => {
                     </div>
                 </Link>
 
-                <div className="flex items-center gap-4">
-                    {user ? (
-                        <div className="flex items-center gap-4">
-                            <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                                <UserIcon className="w-4 h-4" />
-                                <span className="hidden sm:inline-block truncate max-w-[150px]">{user.email}</span>
-                            </div>
-                            <button
-                                onClick={signOut}
-                                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
-                            >
-                                <LogOut className="w-4 h-4" />
-                                Logout
-                            </button>
+            <div className="flex items-center gap-4">
+                {user ? (
+                    <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                            <UserIcon className="w-4 h-4" />
+                            <span className="hidden sm:inline-block truncate max-w-[150px]">{user.email}</span>
                         </div>
-                    ) : (
                         <button
-                            onClick={() => openAuthModal('login')}
-                            className="px-4 py-2 text-sm font-medium text-white bg-green-800 hover:bg-green-900 rounded-md transition-colors cursor-pointer"
+                            onClick={signOut}
+                            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
+                        >
+                            <LogOut className="w-4 h-4" />
+                            Logout
+                        </button>
+                    </div>
+                ) : (
+                    <>
+                        <Link
+                            to="/login"
+                            className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
                         >
                             Log in
-                        </button>
-                    )}
-                </div>
-            </nav>
-
-            <AuthModal
-                isOpen={isAuthModalOpen}
-                onClose={() => setIsAuthModalOpen(false)}
-                initialMode={authModalMode}
-            />
-        </>
+                        </Link>
+                        <Link
+                            to="/signup"
+                            className="px-4 py-2 text-sm font-medium text-white bg-green-800 hover:bg-green-900 rounded-md transition-colors"
+                        >
+                            Sign up
+                        </Link>
+                    </>
+                )}
+            </div>
+        </nav>
     );
 };
 

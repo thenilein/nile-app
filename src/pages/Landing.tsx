@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Search } from "lucide-react";
+import { useLocation } from "../context/LocationContext";
 
 const MapPinIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 mb-4">
@@ -34,6 +35,7 @@ const TargetIcon = () => (
 
 const HeaderSection = () => {
     const [activeTab, setActiveTab] = useState("Delivery");
+    const { location, locationError, isLoadingLocation, getCurrentLocation } = useLocation();
 
     return (
         <section className="flex flex-col items-center pt-16 pb-12 px-4">
@@ -59,9 +61,14 @@ const HeaderSection = () => {
                 </h1>
 
                 <div className="flex flex-col md:flex-row items-center justify-center gap-6 w-full max-w-3xl mx-auto">
-                    <button className="flex items-center justify-center bg-green-800 hover:bg-green-900 text-white font-medium py-3 px-6 rounded-md w-full md:w-auto transition-colors whitespace-nowrap shadow-sm">
+                    <button
+                        type="button"
+                        onClick={getCurrentLocation}
+                        disabled={isLoadingLocation}
+                        className="flex items-center justify-center bg-green-800 hover:bg-green-900 disabled:opacity-70 disabled:cursor-not-allowed text-white font-medium py-3 px-6 rounded-md w-full md:w-auto transition-colors whitespace-nowrap shadow-sm"
+                    >
                         <TargetIcon />
-                        Use my current location
+                        {isLoadingLocation ? "Getting location..." : "Use my current location"}
                     </button>
 
                     <span className="text-gray-400 font-medium whitespace-nowrap text-sm">OR</span>
@@ -77,6 +84,14 @@ const HeaderSection = () => {
                         />
                     </div>
                 </div>
+                {location && (
+                    <p className="mt-4 text-sm text-green-800 font-medium">
+                        Location: {location.lat.toFixed(6)}, {location.lng.toFixed(6)}
+                    </p>
+                )}
+                {locationError && (
+                    <p className="mt-4 text-sm text-red-600 font-medium">{locationError}</p>
+                )}
             </div>
         </section>
     );
