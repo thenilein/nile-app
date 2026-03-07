@@ -28,12 +28,12 @@ const AdminLogin = () => {
                 .from('profiles')
                 .select('role')
                 .eq('id', data.user.id)
-                .single();
+                .maybeSingle();
 
             if (profileError) throw profileError;
 
-            if (profile.role !== 'admin') {
-                // Not an admin, sign them out immediately
+            if (!profile || profile.role !== 'admin') {
+                // Not an admin or profile not found, sign them out immediately
                 await supabase.auth.signOut();
                 throw new Error("Unauthorized access. Admin privileges required.");
             }
