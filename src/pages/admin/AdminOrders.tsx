@@ -1,18 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAdmin } from '../../context/AdminContext';
-import { Search, ChevronDown, Eye, X, Download } from 'lucide-react';
+import { Search, Download, Eye, X, ChevronDown } from 'lucide-react';
 
 const STATUSES = ['pending', 'accepted', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled'];
-
-const STATUS_COLORS: Record<string, string> = {
-    pending: 'bg-yellow-100 text-yellow-700',
-    accepted: 'bg-blue-100 text-blue-700',
-    preparing: 'bg-purple-100 text-purple-700',
-    ready: 'bg-indigo-100 text-indigo-700',
-    out_for_delivery: 'bg-cyan-100 text-cyan-700',
-    delivered: 'bg-green-100 text-green-700',
-    cancelled: 'bg-red-100 text-red-700',
+const STATUS_BADGE: Record<string, string> = {
+    pending: 'a-badge--yellow', accepted: 'a-badge--blue',
+    preparing: 'a-badge--blue', ready: 'a-badge--purple',
+    out_for_delivery: 'a-badge--cyan', delivered: 'a-badge--green',
+    cancelled: 'a-badge--red',
 };
 
 interface Order {
@@ -20,7 +16,6 @@ interface Order {
     payment_method: string; order_type: string; created_at: string; notes: string | null;
     profiles: { phone: string | null; full_name: string | null } | null;
 }
-
 interface OrderItem {
     id: string; quantity: number; price_at_purchase: number;
     products: { name: string } | null;
@@ -36,212 +31,183 @@ const AdminOrders: React.FC = () => {
     const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
     const [loadingItems, setLoadingItems] = useState(false);
     const [page, setPage] = useState(0);
-    const PAGE_SIZE = 15;
+    const PAGE = 15;
 
     useEffect(() => { fetchOrders(); }, [statusFilter, page]);
 
     const fetchOrders = async () => {
         setLoading(true);
-        let query = supabase.from('orders')
-            .select('*, profiles(phone, full_name)')
-            .order('created_at', { ascending: false })
-            .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
-        if (statusFilter) query = query.eq('status', statusFilter);
-        const { data } = await query;
+        let q = supabase.from('orders').select('*, profiles(phone, full_name)').order('created_at', { ascending: false }).range(page * PAGE, (page + 1) * PAGE - 1);
+        if (statusFilter) q = q.eq('status', statusFilter);
+        const { data } = await q;
         setOrders(data || []);
         setLoading(false);
     };
 
     const openOrder = async (o: Order) => {
         setSelectedOrder(o); setLoadingItems(true);
-        const { data } = await supabase.from('order_items')
-            .select('*, products(name)').eq('order_id', o.id);
-        setOrderItems(data || []);
-        setLoadingItems(false);
+        const { data } = await supabase.from('order_items').select('*, products(name)').eq('order_id', o.id);
+        setOrderItems(data || []); setLoadingItems(false);
     };
 
     const updateStatus = async (orderId: string, newStatus: string) => {
         const old = orders.find(o => o.id === orderId);
         await supabase.from('orders').update({ status: newStatus }).eq('id', orderId);
-        await logAction('status_change', 'orders', orderId, `Changed order status from "${old?.status}" to "${newStatus}"`);
+        await logAction('status_change', 'orders', orderId, `Status: "${old?.status}" → "${newStatus}"`);
         setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
         if (selectedOrder?.id === orderId) setSelectedOrder(prev => prev ? { ...prev, status: newStatus } : prev);
     };
 
     const exportCSV = () => {
-        const rows = [
-            ['Order ID', 'Customer', 'Total', 'Status', 'Payment', 'Type', 'Date'],
-            ...orders.map(o => [
-                o.id.slice(0, 8),
-                o.profiles?.phone || o.profiles?.full_name || 'Guest',
-                o.total_amount,
-                o.status,
-                o.payment_status,
-                o.order_type,
-                new Date(o.created_at).toLocaleString(),
-            ])
-        ];
-        const csv = rows.map(r => r.join(',')).join('\n');
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = 'orders.csv'; a.click();
+        const rows = [['ID', 'Customer', 'Total', 'Status', 'Type', 'Date'], ...orders.map(o => [o.id.slice(0, 8), o.profiles?.phone || 'Guest', o.total_amount, o.status, o.order_type, new Date(o.created_at).toLocaleString()])];
+        const blob = new Blob([rows.map(r => r.join(',')).join('\n')], { type: 'text/csv' });
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'orders.csv'; a.click();
     };
 
     const filtered = orders.filter(o => {
         const q = search.toLowerCase();
-        return (
-            o.id.toLowerCase().includes(q) ||
-            (o.profiles?.phone || '').toLowerCase().includes(q) ||
-            (o.profiles?.full_name || '').toLowerCase().includes(q)
-        );
+        return o.id.toLowerCase().includes(q) || (o.profiles?.phone || '').includes(q) || (o.profiles?.full_name || '').toLowerCase().includes(q);
     });
 
     return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
+        <div>
+            <div className="a-page-header">
                 <div>
-                    <h1 className="text-2xl font-bold">Orders</h1>
-                    <p className="text-sm text-gray-500 mt-0.5">Manage and update order statuses</p>
+                    <h1 className="a-page-header__title">Orders</h1>
+                    <p className="a-page-header__sub">Manage and update order statuses</p>
                 </div>
-                <button onClick={exportCSV} className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-xl text-sm hover:bg-gray-50 transition-colors">
-                    <Download className="w-4 h-4" /> Export CSV
+                <button onClick={exportCSV} className="a-btn a-btn--ghost">
+                    <Download style={{ width: 14, height: 14 }} /> Export CSV
                 </button>
             </div>
 
-            {/* Status Tabs */}
-            <div className="flex gap-2 overflow-x-auto pb-1">
+            {/* Status tabs */}
+            <div className="a-tabs">
                 {['', ...STATUSES].map(s => (
                     <button key={s} onClick={() => { setStatusFilter(s); setPage(0); }}
-                        className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${statusFilter === s ? 'bg-green-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                        className={`a-tab ${statusFilter === s ? 'a-tab--active' : ''}`}>
                         {s ? s.replace('_', ' ') : 'All'}
                     </button>
                 ))}
             </div>
 
             {/* Search */}
-            <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input value={search} onChange={e => setSearch(e.target.value)}
-                    placeholder="Search by order ID or customer..."
-                    className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+            <div className="a-filter-bar">
+                <div className="a-filter-bar__search">
+                    <Search className="a-filter-bar__search-icon" />
+                    <input className="a-filter-bar__search-input" placeholder="Search by order ID or customer…" value={search} onChange={e => setSearch(e.target.value)} />
+                </div>
             </div>
 
-            {/* Table */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+            <div className="a-table-wrap">
+                <div style={{ overflowX: 'auto' }}>
+                    <table className="a-table">
                         <thead>
-                            <tr className="border-b border-gray-100 bg-gray-50">
-                                {['Order ID', 'Customer', 'Total', 'Status', 'Payment', 'Type', 'Time', ''].map(h => (
-                                    <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
-                                ))}
+                            <tr>
+                                <th>Order</th><th>Customer</th><th>Total</th>
+                                <th>Status</th><th>Payment</th><th>Type</th><th>Time</th><th></th>
                             </tr>
                         </thead>
                         <tbody>
                             {loading ? (
-                                <tr><td colSpan={8} className="text-center py-12">
-                                    <div className="w-6 h-6 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto" />
-                                </td></tr>
+                                <tr><td colSpan={8}><div className="a-spinner"><div className="a-spinner__dot" /></div></td></tr>
                             ) : filtered.map(o => (
-                                <tr key={o.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors last:border-0">
-                                    <td className="px-4 py-3 font-mono text-xs text-gray-500">#{o.id.slice(0, 8)}</td>
-                                    <td className="px-4 py-3 font-medium">{o.profiles?.phone || o.profiles?.full_name || 'Guest'}</td>
-                                    <td className="px-4 py-3 font-semibold">₹{Number(o.total_amount).toFixed(0)}</td>
-                                    <td className="px-4 py-3">
-                                        <div className="relative inline-block">
-                                            <select value={o.status}
-                                                onChange={e => updateStatus(o.id, e.target.value)}
-                                                className={`appearance-none pr-5 pl-2 py-0.5 rounded-full text-xs font-medium border-0 cursor-pointer ${STATUS_COLORS[o.status] || 'bg-gray-100 text-gray-600'}`}>
-                                                {STATUSES.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
+                                <tr key={o.id}>
+                                    <td><code style={{ fontSize: 11, color: 'var(--admin-text-3)' }}>#{o.id.slice(0, 8)}</code></td>
+                                    <td style={{ fontWeight: 600, fontSize: 13 }}>{o.profiles?.phone || o.profiles?.full_name || 'Guest'}</td>
+                                    <td style={{ fontWeight: 700, color: '#16a34a' }}>₹{Number(o.total_amount).toFixed(0)}</td>
+                                    <td>
+                                        <div style={{ position: 'relative', display: 'inline-block' }}>
+                                            <select value={o.status} onChange={e => updateStatus(o.id, e.target.value)}
+                                                className={`a-badge ${STATUS_BADGE[o.status] || 'a-badge--gray'}`}
+                                                style={{ appearance: 'none', paddingRight: 20, border: 'none', cursor: 'pointer', background: 'transparent', fontFamily: 'inherit', fontWeight: 600 }}>
+                                                {STATUSES.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
                                             </select>
-                                            <ChevronDown className="absolute right-1 top-1 w-3 h-3 pointer-events-none" />
+                                            <ChevronDown style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', width: 10, height: 10, pointerEvents: 'none', opacity: 0.5 }} />
                                         </div>
                                     </td>
-                                    <td className="px-4 py-3">
-                                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${o.payment_status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
-                                            {o.payment_status}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-3 text-xs text-gray-500 capitalize">{o.order_type}</td>
-                                    <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
+                                    <td><span className={`a-badge ${o.payment_status === 'paid' ? 'a-badge--green' : 'a-badge--yellow'}`}>{o.payment_status}</span></td>
+                                    <td style={{ fontSize: 12, color: 'var(--admin-text-2)', textTransform: 'capitalize' }}>{o.order_type}</td>
+                                    <td style={{ fontSize: 11, color: 'var(--admin-text-3)', whiteSpace: 'nowrap' }}>
                                         {new Date(o.created_at).toLocaleDateString()} {new Date(o.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                     </td>
-                                    <td className="px-4 py-3">
-                                        <button onClick={() => openOrder(o)} className="p-1.5 hover:bg-gray-100 rounded-lg">
-                                            <Eye className="w-3.5 h-3.5 text-gray-500" />
-                                        </button>
+                                    <td>
+                                        <button onClick={() => openOrder(o)} className="a-btn a-btn--ghost a-btn--sm a-btn--icon"><Eye style={{ width: 13, height: 13 }} /></button>
                                     </td>
                                 </tr>
                             ))}
                             {!loading && filtered.length === 0 && (
-                                <tr><td colSpan={8} className="text-center py-12 text-gray-400">No orders found</td></tr>
+                                <tr><td colSpan={8}>
+                                    <div className="a-empty">
+                                        <div className="a-empty__icon">🛍</div>
+                                        <div className="a-empty__title">No orders found</div>
+                                    </div>
+                                </td></tr>
                             )}
                         </tbody>
                     </table>
                 </div>
-                {/* Pagination */}
-                <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
-                    <button disabled={page === 0} onClick={() => setPage(p => p - 1)}
-                        className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50">← Prev</button>
-                    <span className="text-xs text-gray-500">Page {page + 1}</span>
-                    <button disabled={orders.length < PAGE_SIZE} onClick={() => setPage(p => p + 1)}
-                        className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50">Next →</button>
+                <div className="a-pagination">
+                    <span className="a-pagination__info">Page {page + 1}</span>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        <button disabled={page === 0} onClick={() => setPage(p => p - 1)} className="a-btn a-btn--ghost a-btn--sm">← Prev</button>
+                        <button disabled={orders.length < PAGE} onClick={() => setPage(p => p + 1)} className="a-btn a-btn--ghost a-btn--sm">Next →</button>
+                    </div>
                 </div>
             </div>
 
-            {/* Order Detail Panel */}
+            {/* Order detail panel */}
             {selectedOrder && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
-                    <div className="bg-white rounded-t-2xl md:rounded-2xl w-full md:max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
-                        <div className="flex items-center justify-between p-6 border-b sticky top-0 bg-white">
+                <div className="a-modal-overlay" style={{ alignItems: 'flex-end' }}>
+                    <div className="a-modal a-modal--lg" style={{ maxHeight: '90vh', marginBottom: 0, borderRadius: '16px 16px 0 0' }}>
+                        <div className="a-modal__header">
                             <div>
-                                <h2 className="font-bold text-lg">Order #{selectedOrder.id.slice(0, 8)}</h2>
-                                <span className={`mt-1 inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[selectedOrder.status]}`}>
-                                    {selectedOrder.status}
-                                </span>
+                                <h2 className="a-modal__title">Order #{selectedOrder.id.slice(0, 8)}</h2>
+                                <span className={`a-badge ${STATUS_BADGE[selectedOrder.status] || 'a-badge--gray'}`} style={{ marginTop: 4, display: 'inline-flex' }}>{selectedOrder.status}</span>
                             </div>
-                            <button onClick={() => setSelectedOrder(null)} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4" /></button>
+                            <button onClick={() => setSelectedOrder(null)} className="a-btn a-btn--ghost a-btn--sm a-btn--icon"><X style={{ width: 14, height: 14 }} /></button>
                         </div>
-                        <div className="p-6 space-y-4">
-                            <div className="grid grid-cols-2 gap-4 text-sm">
-                                <div><span className="text-gray-500">Customer</span><div className="font-medium mt-1">{selectedOrder.profiles?.phone || selectedOrder.profiles?.full_name || 'Guest'}</div></div>
-                                <div><span className="text-gray-500">Total</span><div className="font-bold mt-1 text-green-700">₹{Number(selectedOrder.total_amount).toFixed(2)}</div></div>
-                                <div><span className="text-gray-500">Payment</span><div className="font-medium mt-1 capitalize">{selectedOrder.payment_method} · {selectedOrder.payment_status}</div></div>
-                                <div><span className="text-gray-500">Type</span><div className="font-medium mt-1 capitalize">{selectedOrder.order_type}</div></div>
-                                <div className="col-span-2"><span className="text-gray-500">Date</span><div className="font-medium mt-1">{new Date(selectedOrder.created_at).toLocaleString()}</div></div>
-                                {selectedOrder.notes && <div className="col-span-2"><span className="text-gray-500">Notes</span><div className="font-medium mt-1">{selectedOrder.notes}</div></div>}
-                            </div>
-
-                            <div className="border-t pt-4">
-                                <h3 className="font-semibold text-sm mb-3">Items</h3>
-                                {loadingItems ? (
-                                    <div className="text-center py-4 text-gray-400 text-sm">Loading items...</div>
-                                ) : (
-                                    <div className="space-y-2">
-                                        {orderItems.map(item => (
-                                            <div key={item.id} className="flex items-center justify-between text-sm py-2 border-b border-gray-50">
-                                                <div className="flex items-center gap-3">
-                                                    <span className="w-6 h-6 bg-green-100 text-green-700 text-xs font-bold rounded-full flex items-center justify-center">{item.quantity}</span>
-                                                    <span>{item.products?.name || 'Unknown'}</span>
-                                                </div>
-                                                <span className="font-medium">₹{(item.price_at_purchase * item.quantity).toFixed(0)}</span>
-                                            </div>
-                                        ))}
+                        <div className="a-modal__body">
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+                                {[
+                                    ['Customer', selectedOrder.profiles?.phone || selectedOrder.profiles?.full_name || 'Guest'],
+                                    ['Total', `₹${Number(selectedOrder.total_amount).toFixed(2)}`],
+                                    ['Payment', `${selectedOrder.payment_method} · ${selectedOrder.payment_status}`],
+                                    ['Type', selectedOrder.order_type],
+                                    ['Date', new Date(selectedOrder.created_at).toLocaleString()],
+                                    selectedOrder.notes ? ['Notes', selectedOrder.notes] : null,
+                                ].filter(Boolean).map(([k, v]: any) => (
+                                    <div key={k} style={{ padding: '12px 14px', background: 'var(--admin-surface-2)', borderRadius: 10, border: '1px solid var(--admin-border)' }}>
+                                        <div style={{ fontSize: 11, color: 'var(--admin-text-3)', marginBottom: 4 }}>{k}</div>
+                                        <div style={{ fontSize: 13, fontWeight: 600 }}>{v}</div>
                                     </div>
-                                )}
+                                ))}
                             </div>
 
-                            <div>
-                                <label className="text-xs font-medium text-gray-600 block mb-2">Update Status</label>
-                                <div className="flex flex-wrap gap-2">
-                                    {STATUSES.map(s => (
-                                        <button key={s} onClick={() => updateStatus(selectedOrder.id, s)}
-                                            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${selectedOrder.status === s ? STATUS_COLORS[s] + ' ring-2 ring-offset-1 ring-current' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                                            {s.replace('_', ' ')}
-                                        </button>
+                            <div className="a-divider" />
+                            <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Items</h3>
+                            {loadingItems ? <div className="a-spinner"><div className="a-spinner__dot" /></div> : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    {orderItems.map(item => (
+                                        <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: 'var(--admin-surface-2)', borderRadius: 9 }}>
+                                            <div style={{ width: 26, height: 26, background: '#dcfce7', color: '#16a34a', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{item.quantity}</div>
+                                            <span style={{ flex: 1, fontSize: 13 }}>{item.products?.name || 'Unknown'}</span>
+                                            <span style={{ fontWeight: 700, fontSize: 13 }}>₹{(item.price_at_purchase * item.quantity).toFixed(0)}</span>
+                                        </div>
                                     ))}
                                 </div>
+                            )}
+
+                            <div className="a-divider" />
+                            <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Update Status</h3>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                {STATUSES.map(s => (
+                                    <button key={s} onClick={() => updateStatus(selectedOrder.id, s)}
+                                        className={`a-btn a-btn--sm ${selectedOrder.status === s ? 'a-btn--primary' : 'a-btn--ghost'}`}
+                                        style={{ textTransform: 'capitalize', fontSize: 12 }}>
+                                        {s.replace(/_/g, ' ')}
+                                    </button>
+                                ))}
                             </div>
                         </div>
                     </div>

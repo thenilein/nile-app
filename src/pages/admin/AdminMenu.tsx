@@ -1,19 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAdmin } from '../../context/AdminContext';
-import { Plus, Search, Edit2, Trash2, ToggleLeft, ToggleRight, X, Upload, Star } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, X, Upload } from 'lucide-react';
 
-interface Category { id: string; name: string }
 interface Product {
     id: string; name: string; description: string | null; price: number;
-    image_url: string | null; category_id: string | null; is_available: boolean;
-    is_popular: boolean; stock_quantity: number; is_active: boolean;
-    categories?: { name: string };
+    category_id: string | null; image_url: string | null; is_available: boolean;
+    stock_quantity: number | null; is_popular: boolean;
+    categories?: { name: string } | null;
 }
+interface Category { id: string; name: string; }
 
-const EMPTY_FORM = {
+const EMPTY = {
     name: '', description: '', price: '', category_id: '',
-    image_url: '', stock_quantity: '100', is_available: true, is_popular: false, is_active: true
+    image_url: '', is_available: true, stock_quantity: '', is_popular: false
 };
 
 const AdminMenu: React.FC = () => {
@@ -25,277 +25,215 @@ const AdminMenu: React.FC = () => {
     const [catFilter, setCatFilter] = useState('');
     const [showModal, setShowModal] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
-    const [form, setForm] = useState({ ...EMPTY_FORM });
+    const [form, setForm] = useState({ ...EMPTY });
     const [saving, setSaving] = useState(false);
     const [deleteId, setDeleteId] = useState<string | null>(null);
-    const [imageUploading, setImageUploading] = useState(false);
     const [error, setError] = useState('');
 
-    useEffect(() => { fetchAll(); }, []);
+    useEffect(() => {
+        fetchAll();
+        supabase.from('categories').select('id, name').order('name').then(({ data }) => setCategories(data || []));
+    }, []);
 
     const fetchAll = async () => {
         setLoading(true);
-        const [{ data: prods }, { data: cats }] = await Promise.all([
-            supabase.from('products').select('*, categories(name)').order('created_at', { ascending: false }),
-            supabase.from('categories').select('id, name').order('display_order'),
-        ]);
-        setProducts(prods || []);
-        setCategories(cats || []);
+        const { data } = await supabase.from('products').select('*, categories(name)').order('name');
+        setProducts(data || []);
         setLoading(false);
     };
 
-    const openAdd = () => { setEditingId(null); setForm({ ...EMPTY_FORM }); setError(''); setShowModal(true); };
+    const openAdd = () => { setEditingId(null); setForm({ ...EMPTY }); setError(''); setShowModal(true); };
     const openEdit = (p: Product) => {
         setEditingId(p.id);
-        setForm({
-            name: p.name, description: p.description || '', price: String(p.price),
-            category_id: p.category_id || '', image_url: p.image_url || '',
-            stock_quantity: String(p.stock_quantity), is_available: p.is_available,
-            is_popular: p.is_popular, is_active: p.is_active,
-        });
+        setForm({ name: p.name, description: p.description || '', price: String(p.price), category_id: p.category_id || '', image_url: p.image_url || '', is_available: p.is_available, stock_quantity: p.stock_quantity != null ? String(p.stock_quantity) : '', is_popular: p.is_popular });
         setError(''); setShowModal(true);
     };
 
     const handleSave = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setSaving(true); setError('');
+        e.preventDefault(); setSaving(true); setError('');
         try {
-            const payload = {
-                name: form.name.trim(), description: form.description.trim() || null,
-                price: parseFloat(form.price), category_id: form.category_id || null,
-                image_url: form.image_url || null, stock_quantity: parseInt(form.stock_quantity) || 0,
-                is_available: form.is_available, is_popular: form.is_popular, is_active: form.is_active,
-            };
+            const payload = { name: form.name.trim(), description: form.description.trim() || null, price: parseFloat(form.price), category_id: form.category_id || null, image_url: form.image_url || null, is_available: form.is_available, stock_quantity: form.stock_quantity ? parseInt(form.stock_quantity) : null, is_popular: form.is_popular };
             if (editingId) {
-                const old = products.find(p => p.id === editingId);
                 await supabase.from('products').update(payload).eq('id', editingId);
-                await logAction('update', 'products', editingId, `Updated menu item "${payload.name}"`, old, payload);
+                await logAction('update', 'products', editingId, `Updated "${payload.name}"`);
             } else {
-                const { data: inserted } = await supabase.from('products').insert(payload).select().single();
-                await logAction('create', 'products', inserted?.id, `Created menu item "${payload.name}"`, null, payload);
+                const { data: ins } = await supabase.from('products').insert(payload).select().single();
+                await logAction('create', 'products', ins?.id, `Added "${payload.name}"`);
             }
-            setShowModal(false);
-            fetchAll();
-        } catch (err: any) {
-            setError(err.message || 'Failed to save');
-        } finally {
-            setSaving(false);
-        }
+            setShowModal(false); fetchAll();
+        } catch (err: any) { setError(err.message || 'Failed to save'); }
+        finally { setSaving(false); }
     };
 
     const handleDelete = async () => {
         if (!deleteId) return;
-        const item = products.find(p => p.id === deleteId);
+        const p = products.find(x => x.id === deleteId);
         await supabase.from('products').delete().eq('id', deleteId);
-        await logAction('delete', 'products', deleteId, `Deleted menu item "${item?.name}"`);
-        setDeleteId(null);
-        fetchAll();
+        await logAction('delete', 'products', deleteId, `Deleted "${p?.name}"`);
+        setDeleteId(null); fetchAll();
     };
 
-    const toggleAvailability = async (p: Product) => {
+    const toggleAvail = async (p: Product) => {
         await supabase.from('products').update({ is_available: !p.is_available }).eq('id', p.id);
-        await logAction('update', 'products', p.id, `Toggled availability for "${p.name}" to ${!p.is_available}`);
-        fetchAll();
-    };
-
-    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        setImageUploading(true);
-        const ext = file.name.split('.').pop();
-        const path = `menu/${Date.now()}.${ext}`;
-        const { error: upErr } = await supabase.storage.from('menu-images').upload(path, file);
-        if (upErr) { setError('Image upload failed: ' + upErr.message); setImageUploading(false); return; }
-        const { data: { publicUrl } } = supabase.storage.from('menu-images').getPublicUrl(path);
-        setForm(f => ({ ...f, image_url: publicUrl }));
-        setImageUploading(false);
+        setProducts(prev => prev.map(x => x.id === p.id ? { ...x, is_available: !x.is_available } : x));
     };
 
     const filtered = products.filter(p => {
         const q = search.toLowerCase();
-        const matchSearch = p.name.toLowerCase().includes(q);
-        const matchCat = !catFilter || p.category_id === catFilter;
-        return matchSearch && matchCat;
+        const matchQ = p.name.toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q);
+        const matchCat = catFilter ? p.category_id === catFilter : true;
+        return matchQ && matchCat;
     });
 
+    const isLow = (p: Product) => p.stock_quantity != null && p.stock_quantity < 5;
+
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
+        <div>
+            <div className="a-page-header">
                 <div>
-                    <h1 className="text-2xl font-bold">Menu Items</h1>
-                    <p className="text-sm text-gray-500 mt-0.5">{products.length} items total</p>
+                    <h1 className="a-page-header__title">Menu Items</h1>
+                    <p className="a-page-header__sub">{products.length} items · {products.filter(p => !p.is_available).length} unavailable</p>
                 </div>
-                <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors text-sm font-medium shadow-sm">
-                    <Plus className="w-4 h-4" /> Add Item
+                <button onClick={openAdd} className="a-btn a-btn--primary">
+                    <Plus style={{ width: 15, height: 15 }} /> Add Item
                 </button>
             </div>
 
             {/* Filters */}
-            <div className="flex flex-wrap gap-3">
-                <div className="relative flex-1 min-w-[200px]">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input value={search} onChange={e => setSearch(e.target.value)}
-                        placeholder="Search items..."
-                        className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+            <div className="a-filter-bar">
+                <div className="a-filter-bar__search">
+                    <Search className="a-filter-bar__search-icon" />
+                    <input className="a-filter-bar__search-input" placeholder="Search menu items…" value={search} onChange={e => setSearch(e.target.value)} />
                 </div>
-                <select value={catFilter} onChange={e => setCatFilter(e.target.value)}
-                    className="px-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white">
+                <select className="a-filter-bar__select" value={catFilter} onChange={e => setCatFilter(e.target.value)}>
                     <option value="">All Categories</option>
                     {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
             </div>
 
-            {/* Grid */}
-            {loading ? (
-                <div className="flex items-center justify-center h-64">
-                    <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin" />
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {loading ? <div className="a-spinner"><div className="a-spinner__dot" /></div> : (
+                <div className="a-item-grid">
                     {filtered.map(p => (
-                        <div key={p.id} className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all hover:shadow-md ${!p.is_available ? 'opacity-60' : ''}`}>
-                            <div className="relative h-40 bg-gray-100">
-                                {p.image_url ? (
-                                    <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" />
-                                ) : (
-                                    <div className="w-full h-full flex items-center justify-center text-gray-300 text-4xl">🍦</div>
-                                )}
+                        <div key={p.id} className={`a-item-card ${!p.is_available ? 'a-item-card--dim' : ''}`}>
+                            <div className="a-item-card__img">
+                                {p.image_url
+                                    ? <img src={p.image_url} alt={p.name} />
+                                    : <div className="a-item-card__placeholder">🍦</div>
+                                }
                                 {p.is_popular && (
-                                    <div className="absolute top-2 left-2 bg-yellow-400 text-yellow-900 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                                        <Star className="w-2.5 h-2.5" /> Popular
+                                    <div className="a-item-card__popular">
+                                        <span className="a-badge a-badge--orange" style={{ fontSize: 10 }}>⭐ Popular</span>
                                     </div>
                                 )}
-                                <div className="absolute top-2 right-2 flex gap-1">
-                                    <button onClick={() => openEdit(p)} className="w-7 h-7 bg-white rounded-lg shadow flex items-center justify-center hover:bg-gray-50">
-                                        <Edit2 className="w-3.5 h-3.5 text-gray-600" />
-                                    </button>
-                                    <button onClick={() => setDeleteId(p.id)} className="w-7 h-7 bg-white rounded-lg shadow flex items-center justify-center hover:bg-red-50">
-                                        <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                                    </button>
+                                <div className="a-item-card__actions">
+                                    <button onClick={() => openEdit(p)} className="a-item-card__action-btn"><Edit2 style={{ width: 12, height: 12, color: 'var(--admin-text-2)' }} /></button>
+                                    <button onClick={() => setDeleteId(p.id)} className="a-item-card__action-btn"><Trash2 style={{ width: 12, height: 12, color: '#ef4444' }} /></button>
                                 </div>
                             </div>
-                            <div className="p-4">
-                                <div className="flex items-start justify-between gap-2">
-                                    <div className="flex-1 min-w-0">
-                                        <h3 className="font-semibold text-sm truncate">{p.name}</h3>
-                                        <p className="text-xs text-gray-400 mt-0.5 truncate">{p.categories?.name || 'Uncategorised'}</p>
+                            <div className="a-item-card__body">
+                                <div className="a-item-card__name">{p.name}</div>
+                                <div className="a-item-card__cat">{p.categories?.name || 'Uncategorised'}</div>
+                                {p.description && <div style={{ fontSize: 11, color: 'var(--admin-text-3)', marginTop: 4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any }}>{p.description}</div>}
+                                {p.stock_quantity != null && (
+                                    <div style={{ marginTop: 8 }}>
+                                        <span className={`a-badge ${isLow(p) ? 'a-badge--red' : 'a-badge--green'}`} style={{ fontSize: 10 }}>
+                                            {isLow(p) ? '⚠ Low stock' : 'In stock'} · {p.stock_quantity}
+                                        </span>
                                     </div>
-                                    <span className="text-sm font-bold text-green-700 flex-shrink-0">₹{Number(p.price).toFixed(0)}</span>
-                                </div>
-                                <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-                                    <span className="text-xs text-gray-500">Stock: <strong>{p.stock_quantity}</strong></span>
-                                    <button onClick={() => toggleAvailability(p)} className={`flex items-center gap-1 text-xs font-medium transition-colors ${p.is_available ? 'text-green-600' : 'text-gray-400'}`}>
-                                        {p.is_available ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
-                                        {p.is_available ? 'Available' : 'Unavailable'}
-                                    </button>
-                                </div>
+                                )}
+                            </div>
+                            <div className="a-item-card__footer">
+                                <span className="a-item-card__price">₹{Number(p.price).toFixed(0)}</span>
+                                <button onClick={() => toggleAvail(p)} className={`a-btn a-btn--sm ${p.is_available ? 'a-btn--ghost' : 'a-btn--primary'}`} style={{ fontSize: 11 }}>
+                                    {p.is_available ? 'Available' : 'Hidden'}
+                                </button>
                             </div>
                         </div>
                     ))}
                     {filtered.length === 0 && (
-                        <div className="col-span-3 text-center py-16 text-gray-400">No items found</div>
+                        <div style={{ gridColumn: '1/-1' }}>
+                            <div className="a-empty">
+                                <div className="a-empty__icon">🍦</div>
+                                <div className="a-empty__title">No items found</div>
+                                <div className="a-empty__desc">Try adjusting your search or filters</div>
+                            </div>
+                        </div>
                     )}
                 </div>
             )}
 
-            {/* Add/Edit Modal */}
+            {/* Modal */}
             {showModal && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
-                        <div className="flex items-center justify-between p-6 border-b">
-                            <h2 className="font-bold text-lg">{editingId ? 'Edit Item' : 'Add New Item'}</h2>
-                            <button onClick={() => setShowModal(false)} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4" /></button>
+                <div className="a-modal-overlay">
+                    <div className="a-modal a-modal--lg">
+                        <div className="a-modal__header">
+                            <h2 className="a-modal__title">{editingId ? 'Edit Item' : 'Add Menu Item'}</h2>
+                            <button onClick={() => setShowModal(false)} className="a-btn a-btn--ghost a-btn--sm a-btn--icon"><X style={{ width: 14, height: 14 }} /></button>
                         </div>
-                        <form onSubmit={handleSave} className="p-6 space-y-4">
-                            {error && <div className="p-3 bg-red-50 text-red-600 text-sm rounded-lg">{error}</div>}
-
-                            {/* Image */}
-                            <div>
-                                <label className="text-xs font-medium text-gray-600 mb-1 block">Image</label>
-                                {form.image_url && (
-                                    <img src={form.image_url} alt="" className="w-full h-40 object-cover rounded-xl mb-2" />
-                                )}
-                                <label className="flex items-center gap-2 px-4 py-2 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-green-400 transition-colors">
-                                    <Upload className="w-4 h-4 text-gray-400" />
-                                    <span className="text-sm text-gray-500">{imageUploading ? 'Uploading...' : 'Upload Image'}</span>
-                                    <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
-                                </label>
-                                <input value={form.image_url} onChange={e => setForm(f => ({ ...f, image_url: e.target.value }))}
-                                    placeholder="Or paste image URL"
-                                    className="mt-2 w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="col-span-2">
-                                    <label className="text-xs font-medium text-gray-600 mb-1 block">Name *</label>
-                                    <input required value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                                        className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                        <form onSubmit={handleSave}>
+                            <div className="a-modal__body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                                {error && <div className="a-error a-error--red">{error}</div>}
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                                    <div style={{ gridColumn: '1/-1' }}>
+                                        <label className="a-label">Name *</label>
+                                        <input required value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="a-input" placeholder="e.g. Belgian Chocolate Swirl" />
+                                    </div>
+                                    <div>
+                                        <label className="a-label">Price (₹) *</label>
+                                        <input required type="number" min="0" step="0.01" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} className="a-input" placeholder="99" />
+                                    </div>
+                                    <div>
+                                        <label className="a-label">Category</label>
+                                        <select value={form.category_id} onChange={e => setForm(f => ({ ...f, category_id: e.target.value }))} className="a-input" style={{ cursor: 'pointer' }}>
+                                            <option value="">None</option>
+                                            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                        </select>
+                                    </div>
+                                    <div style={{ gridColumn: '1/-1' }}>
+                                        <label className="a-label">Description</label>
+                                        <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="a-input" rows={2} style={{ resize: 'vertical', fontFamily: 'inherit' }} />
+                                    </div>
+                                    <div style={{ gridColumn: '1/-1' }}>
+                                        <label className="a-label">Image URL</label>
+                                        <input value={form.image_url} onChange={e => setForm(f => ({ ...f, image_url: e.target.value }))} className="a-input" placeholder="https://..." />
+                                    </div>
+                                    <div>
+                                        <label className="a-label">Stock Quantity</label>
+                                        <input type="number" min="0" value={form.stock_quantity} onChange={e => setForm(f => ({ ...f, stock_quantity: e.target.value }))} className="a-input" placeholder="Leave blank for unlimited" />
+                                    </div>
                                 </div>
-                                <div className="col-span-2">
-                                    <label className="text-xs font-medium text-gray-600 mb-1 block">Description</label>
-                                    <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                                        rows={2} className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none" />
-                                </div>
-                                <div>
-                                    <label className="text-xs font-medium text-gray-600 mb-1 block">Price (₹) *</label>
-                                    <input required type="number" min="0" step="0.01" value={form.price}
-                                        onChange={e => setForm(f => ({ ...f, price: e.target.value }))}
-                                        className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
-                                </div>
-                                <div>
-                                    <label className="text-xs font-medium text-gray-600 mb-1 block">Stock Qty</label>
-                                    <input type="number" min="0" value={form.stock_quantity}
-                                        onChange={e => setForm(f => ({ ...f, stock_quantity: e.target.value }))}
-                                        className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
-                                </div>
-                                <div className="col-span-2">
-                                    <label className="text-xs font-medium text-gray-600 mb-1 block">Category</label>
-                                    <select value={form.category_id} onChange={e => setForm(f => ({ ...f, category_id: e.target.value }))}
-                                        className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white">
-                                        <option value="">None</option>
-                                        {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div className="flex gap-6 pt-1">
-                                {[
-                                    { key: 'is_available', label: 'Available' },
-                                    { key: 'is_popular', label: 'Popular' },
-                                    { key: 'is_active', label: 'Active' },
-                                ].map(({ key, label }) => (
-                                    <label key={key} className="flex items-center gap-2 cursor-pointer">
-                                        <input type="checkbox" checked={(form as any)[key]}
-                                            onChange={e => setForm(f => ({ ...f, [key]: e.target.checked }))}
-                                            className="w-4 h-4 accent-green-600 rounded" />
-                                        <span className="text-sm text-gray-600">{label}</span>
+                                <div style={{ display: 'flex', gap: 20 }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 13 }}>
+                                        <input type="checkbox" checked={form.is_available} onChange={e => setForm(f => ({ ...f, is_available: e.target.checked }))} style={{ accentColor: '#16a34a' }} />
+                                        <span style={{ color: 'var(--admin-text-2)' }}>Available</span>
                                     </label>
-                                ))}
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 13 }}>
+                                        <input type="checkbox" checked={form.is_popular} onChange={e => setForm(f => ({ ...f, is_popular: e.target.checked }))} style={{ accentColor: '#f59e0b' }} />
+                                        <span style={{ color: 'var(--admin-text-2)' }}>Popular</span>
+                                    </label>
+                                </div>
                             </div>
-
-                            <div className="flex gap-3 pt-2">
-                                <button type="button" onClick={() => setShowModal(false)}
-                                    className="flex-1 px-4 py-2.5 border border-gray-200 text-sm font-medium rounded-xl hover:bg-gray-50">Cancel</button>
-                                <button type="submit" disabled={saving}
-                                    className="flex-1 px-4 py-2.5 bg-green-600 text-white text-sm font-medium rounded-xl hover:bg-green-700 disabled:opacity-50">
-                                    {saving ? 'Saving...' : editingId ? 'Update Item' : 'Add Item'}
-                                </button>
+                            <div className="a-modal__footer">
+                                <button type="button" onClick={() => setShowModal(false)} className="a-btn a-btn--ghost">Cancel</button>
+                                <button type="submit" disabled={saving} className="a-btn a-btn--primary">{saving ? 'Saving…' : editingId ? 'Update' : 'Add Item'}</button>
                             </div>
                         </form>
                     </div>
                 </div>
             )}
 
-            {/* Delete Confirm */}
+            {/* Delete confirm */}
             {deleteId && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl">
-                        <h3 className="font-bold text-lg mb-2">Delete Item?</h3>
-                        <p className="text-sm text-gray-500 mb-6">This action cannot be undone.</p>
-                        <div className="flex gap-3">
-                            <button onClick={() => setDeleteId(null)} className="flex-1 px-4 py-2.5 border text-sm rounded-xl hover:bg-gray-50">Cancel</button>
-                            <button onClick={handleDelete} className="flex-1 px-4 py-2.5 bg-red-600 text-white text-sm rounded-xl hover:bg-red-700">Delete</button>
+                <div className="a-modal-overlay">
+                    <div className="a-modal" style={{ maxWidth: 360 }}>
+                        <div className="a-modal__body" style={{ textAlign: 'center', padding: 32 }}>
+                            <div style={{ fontSize: 40, marginBottom: 12 }}>🗑</div>
+                            <h3 style={{ fontWeight: 700, marginBottom: 6 }}>Delete item?</h3>
+                            <p style={{ fontSize: 13, color: 'var(--admin-text-2)' }}>This action cannot be undone.</p>
+                        </div>
+                        <div className="a-modal__footer" style={{ justifyContent: 'center' }}>
+                            <button onClick={() => setDeleteId(null)} className="a-btn a-btn--ghost">Cancel</button>
+                            <button onClick={handleDelete} className="a-btn a-btn--danger">Delete</button>
                         </div>
                     </div>
                 </div>
