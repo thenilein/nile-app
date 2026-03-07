@@ -34,7 +34,7 @@ const HeaderSection = () => {
     const [activeTab, setActiveTab] = useState("Delivery");
     const [authModalOpen, setAuthModalOpen] = useState(false);
 
-    const { locationData, locationError, isLoadingLocation, getCurrentLocation, clearLocation } = useLocation();
+    const { locationData, locationError, isLoadingLocation, nearestOutlet, isServiceable, getCurrentLocation, clearLocation } = useLocation();
     const { user, isGuest } = useAuth();
     const navigate = useNavigate();
 
@@ -110,30 +110,51 @@ const HeaderSection = () => {
                 {locationSelected && (
                     <div className="flex flex-col items-center gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         {/* Location display */}
-                        <div className="flex items-center gap-2 bg-green-50 border border-green-100 rounded-xl px-5 py-3">
-                            <MapPin className="w-4 h-4 text-green-700 flex-shrink-0" />
-                            <span className="text-green-900 font-semibold text-sm">
-                                {locationData!.displayName}
-                            </span>
-                            <button
-                                type="button"
-                                onClick={clearLocation}
-                                title="Change location"
-                                className="ml-2 text-gray-400 hover:text-green-700 transition-colors"
-                            >
-                                <Edit2 className="w-3.5 h-3.5" />
-                            </button>
+                        <div className="flex flex-col items-center gap-2 bg-green-50 border border-green-100 rounded-xl px-5 py-4 w-full max-w-md">
+                            <div className="flex items-center gap-2 w-full justify-center">
+                                <MapPin className="w-4 h-4 text-green-700 flex-shrink-0" />
+                                <span className="text-green-900 font-semibold text-sm text-center">
+                                    {locationData!.displayName}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={clearLocation}
+                                    title="Change location"
+                                    className="ml-2 text-gray-400 hover:text-green-700 transition-colors"
+                                >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+
+                            {nearestOutlet && (
+                                <div className="mt-1 pt-3 border-t border-green-200/50 w-full text-center">
+                                    <p className="text-xs text-green-800/70 font-medium mb-1">Nearest Outlet</p>
+                                    <p className="text-sm font-bold text-green-900">
+                                        Nile Ice Cream {nearestOutlet.name}
+                                    </p>
+                                    <p className="text-xs text-green-700 mt-1">
+                                        Distance: {nearestOutlet.distance_km.toFixed(2)} km
+                                    </p>
+                                </div>
+                            )}
                         </div>
 
-                        {/* Start Ordering button */}
-                        <button
-                            id="start-ordering-btn"
-                            onClick={handleStartOrdering}
-                            className="flex items-center gap-2 bg-green-800 hover:bg-green-900 text-white font-semibold py-3 px-8 rounded-full shadow-md transition-all hover:shadow-lg hover:-translate-y-px"
-                        >
-                            Start ordering
-                            <ArrowRight className="w-4 h-4" />
-                        </button>
+                        {/* Order action button or Unserviceable message */}
+                        {isServiceable ? (
+                            <button
+                                id="start-ordering-btn"
+                                onClick={handleStartOrdering}
+                                className="flex items-center gap-2 bg-green-800 hover:bg-green-900 text-white font-semibold py-3 px-8 rounded-full shadow-md transition-all hover:shadow-lg hover:-translate-y-px"
+                            >
+                                Start ordering
+                                <ArrowRight className="w-4 h-4" />
+                            </button>
+                        ) : (
+                            <div className="mt-2 text-center bg-orange-50 text-orange-800 border border-orange-200 rounded-xl py-3 px-5">
+                                <p className="font-semibold text-sm">No outlets near your location yet.</p>
+                                <p className="text-xs opacity-80 mt-1">We currently only deliver within 7km. Check back soon!</p>
+                            </div>
+                        )}
                     </div>
                 )}
 

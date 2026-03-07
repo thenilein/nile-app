@@ -1,4 +1,19 @@
-import React, { createContext, useCallback, useContext, useState } from "react";
+import React, { createContext, useCallback, useContext, useState, useEffect } from "react";
+import { supabase } from "../lib/supabase.ts";
+import { useAuth } from "./AuthContext.tsx";
+
+export interface Outlet {
+    id: string;
+    name: string;
+    latitude: number;
+    longitude: number;
+    address: string;
+    city: string;
+    state: string;
+    is_active: boolean;
+    distance_km: number;
+    is_serviceable: boolean;
+}
 
 export interface LocationData {
     latitude: number;
@@ -12,6 +27,8 @@ interface LocationContextType {
     locationData: LocationData | null;
     locationError: string | null;
     isLoadingLocation: boolean;
+    nearestOutlet: Outlet | null;
+    isServiceable: boolean;
     setLocationData: (data: LocationData) => void;
     clearLocation: () => void;
     getCurrentLocation: () => void;
@@ -44,18 +61,99 @@ async function reverseGeocode(lat: number, lon: number): Promise<LocationData | 
 }
 
 export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [locationData, setLocationDataState] = useState<LocationData | null>(null);
+    const { user } = useAuth();
+    const [locationData, setLocationDataState] = useState<LocationData | null>(() => {
+        try {
+            const cached = localStorage.getItem("nile_location");
+            if (cached) return JSON.parse(cached);
+        } catch { }
+        return null;
+    });
+
     const [locationError, setLocationError] = useState<string | null>(null);
     const [isLoadingLocation, setIsLoadingLocation] = useState(false);
+
+    const [nearestOutlet, setNearestOutlet] = useState<Outlet | null>(null);
+    const [isServiceable, setIsServiceable] = useState<boolean>(false);
+
+    // Fetch nearest outlet whenever location changes
+    useEffect(() => {
+        if (!locationData) {
+            setNearestOutlet(null);
+            setIsServiceable(false);
+            return;
+        }
+
+        const fetchNearestOutlet = async () => {
+            setIsLoadingLocation(true);
+            try {
+                const { data, error } = await supabase.rpc('find_nearest_outlet', {
+                    user_lat: locationData.latitude,
+                    user_lng: locationData.longitude
+                });
+
+                if (error) {
+                    console.error("Error finding nearest outlet:", error);
+                    setLocationError("Unable to detect nearest outlet.");
+                    setNearestOutlet(null);
+                    setIsServiceable(false);
+                } else if (!data || data.length === 0) {
+                    setLocationError("No outlets found anywhere.");
+                    setNearestOutlet(null);
+                    setIsServiceable(false);
+                } else {
+                    const closest = data[0] as Outlet;
+                    setNearestOutlet(closest);
+                    setIsServiceable(closest.is_serviceable);
+
+                    if (closest.is_serviceable) {
+                        localStorage.setItem("nile_outlet_id", closest.id);
+                    } else {
+                        localStorage.removeItem("nile_outlet_id");
+                    }
+                }
+            } catch (err) {
+                console.error(err);
+                setLocationError("Unexpected error calculating distance.");
+            } finally {
+                setIsLoadingLocation(false);
+            }
+        };
+
+        fetchNearestOutlet();
+    }, [locationData]);
+
+    // Save location to DB
+    const saveAddressToDB = async (data: LocationData) => {
+        try {
+            await supabase.from("addresses").insert({
+                user_id: user?.id || null,
+                latitude: data.latitude,
+                longitude: data.longitude,
+                city: data.city,
+                state: data.state,
+                district: data.city,
+                formatted_address: data.displayName
+            });
+        } catch (e) {
+            console.error("Error saving address:", e);
+        }
+    };
 
     const setLocationData = useCallback((data: LocationData) => {
         setLocationDataState(data);
         setLocationError(null);
-    }, []);
+        localStorage.setItem("nile_location", JSON.stringify(data));
+        saveAddressToDB(data);
+    }, [user]);
 
     const clearLocation = useCallback(() => {
         setLocationDataState(null);
         setLocationError(null);
+        setNearestOutlet(null);
+        setIsServiceable(false);
+        localStorage.removeItem("nile_location");
+        localStorage.removeItem("nile_outlet_id");
     }, []);
 
     const getCurrentLocation = useCallback(() => {
@@ -64,24 +162,24 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             return;
         }
         setLocationError(null);
-        setIsLoadingLocation(true);
+        setIsLoadingLocation(true); // Let it spin while it fetches coordinates and outlet
         navigator.geolocation.getCurrentPosition(
             async (position) => {
                 const { latitude, longitude } = position.coords;
                 const result = await reverseGeocode(latitude, longitude);
                 if (result) {
-                    setLocationDataState(result);
+                    setLocationData(result);
                 } else {
-                    // Fallback: store raw coordinates with a friendly label
-                    setLocationDataState({
+                    const fallbackData = {
                         latitude,
                         longitude,
                         city: "",
                         state: "",
                         displayName: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
-                    });
+                    };
+                    setLocationData(fallbackData);
                 }
-                setIsLoadingLocation(false);
+                // setIsLoadingLocation is turned off inside the useEffect that catches `locationData` changing
             },
             (error) => {
                 setIsLoadingLocation(false);
@@ -101,7 +199,7 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             },
             { timeout: 10000, enableHighAccuracy: true }
         );
-    }, []);
+    }, [setLocationData]);
 
     return (
         <LocationContext.Provider
@@ -109,6 +207,8 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 locationData,
                 locationError,
                 isLoadingLocation,
+                nearestOutlet,
+                isServiceable,
                 setLocationData,
                 clearLocation,
                 getCurrentLocation,
