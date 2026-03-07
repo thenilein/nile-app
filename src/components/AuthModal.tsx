@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { Phone, AlertCircle, X } from 'lucide-react';
 import OtpVerification from '../pages/OtpVerification';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 type AuthModalProps = {
     isOpen: boolean;
@@ -19,6 +20,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     const [loading, setLoading] = useState(false);
 
     const navigate = useNavigate();
+    const { continueAsGuest } = useAuth();
 
     if (!isOpen) return null;
 
@@ -66,12 +68,13 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
     const handleVerified = () => {
         handleClose();
-        // Optional: you can navigate or refresh state if needed, though useAuth should catch it
+        navigate('/menu');
     };
 
     const handleGuest = () => {
+        continueAsGuest();
         handleClose();
-        // Just closes modal to let them browse
+        navigate('/menu');
     };
 
     const maskPhoneNumber = (num: string) => {
