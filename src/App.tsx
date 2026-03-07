@@ -6,132 +6,108 @@ import Menu from "./pages/Menu.tsx";
 import Cart from "./pages/Cart.tsx";
 import Checkout from "./pages/Checkout.tsx";
 import OrderSuccess from "./pages/OrderSuccess.tsx";
+
+// Admin pages
 import AdminLogin from "./pages/admin/AdminLogin.tsx";
+import AdminLayout from "./components/admin/AdminLayout.tsx";
 import AdminDashboard from "./pages/admin/AdminDashboard.tsx";
+import AdminMenu from "./pages/admin/AdminMenu.tsx";
+import AdminCategories from "./pages/admin/AdminCategories.tsx";
+import AdminOrders from "./pages/admin/AdminOrders.tsx";
+import AdminUsers from "./pages/admin/AdminUsers.tsx";
+import AdminPromotions from "./pages/admin/AdminPromotions.tsx";
+import AdminAnalytics from "./pages/admin/AdminAnalytics.tsx";
+import AdminSettings from "./pages/admin/AdminSettings.tsx";
+import AdminLogs from "./pages/admin/AdminLogs.tsx";
+
+// Context
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { LocationProvider } from "./context/LocationContext";
 import { CartProvider } from "./context/CartContext";
+import { AdminProvider } from "./context/AdminContext";
 import { supabase } from "./lib/supabase";
 
-// Component to protect menu route (must be logged in or guest)
+// ─── Route Guards ──────────────────────────────────────────────────────────────
+
 const MenuRoute = ({ children }: { children: React.ReactNode }) => {
     const { user, isGuest, isLoading } = useAuth();
-
-    if (isLoading) {
-        return <div className="flex-1 flex justify-center items-center h-screen">Loading...</div>;
-    }
-
-    if (!user && !isGuest) {
-        return <Navigate to="/" replace />;
-    }
-
-    return children;
+    if (isLoading) return <div className="flex-1 flex justify-center items-center h-screen">Loading...</div>;
+    if (!user && !isGuest) return <Navigate to="/" replace />;
+    return <>{children}</>;
 };
 
-// Component to protect admin routes
 const AdminRoute = ({ children }: { children: React.ReactNode }) => {
     const { user, isLoading } = useAuth();
     const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
     useEffect(() => {
-        const checkAdminStatus = async () => {
+        const check = async () => {
             if (user) {
                 try {
-                    const { data, error } = await supabase
-                        .from('profiles')
-                        .select('role')
-                        .eq('id', user.id)
-                        .single();
-
-                    if (!error && data?.role === 'admin') {
-                        setIsAdmin(true);
-                        return;
-                    }
-                } catch (e) {
-                    // Ignore errors, assume false
-                }
+                    const { data } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+                    if (data?.role === 'admin') { setIsAdmin(true); return; }
+                } catch (_) { /* fall through */ }
             }
             setIsAdmin(false);
         };
-
-        if (!isLoading) {
-            checkAdminStatus();
-        }
+        if (!isLoading) check();
     }, [user, isLoading]);
 
     if (isLoading || isAdmin === null) {
-        return <div className="flex-1 flex justify-center items-center h-screen">Loading admin verification...</div>;
+        return <div className="flex-1 flex justify-center items-center h-screen text-gray-500 text-sm">Verifying admin access...</div>;
     }
-
-    if (!isAdmin) {
-        return <Navigate to="/admin/login" replace />;
-    }
-
-    return children;
+    if (!isAdmin) return <Navigate to="/admin/login" replace />;
+    return <>{children}</>;
 };
+
+// ─── Routes ────────────────────────────────────────────────────────────────────
 
 const AppRoutes = () => {
     const location = useLocation();
-
-    // Hide navbar on admin routes
     const showNavbar = !location.pathname.startsWith('/admin');
 
     return (
         <div className="min-h-screen bg-white font-sans flex flex-col items-stretch">
             {showNavbar && <Navbar />}
             <Routes>
+                {/* Customer routes */}
                 <Route path="/" element={<Landing />} />
-                <Route
-                    path="/menu"
-                    element={
-                        <MenuRoute>
-                            <Menu />
-                        </MenuRoute>
-                    }
-                />
-                <Route
-                    path="/cart"
-                    element={
-                        <MenuRoute>
-                            <Cart />
-                        </MenuRoute>
-                    }
-                />
-                <Route
-                    path="/checkout"
-                    element={
-                        <MenuRoute>
-                            <Checkout />
-                        </MenuRoute>
-                    }
-                />
-                <Route
-                    path="/order-success"
-                    element={
-                        <MenuRoute>
-                            <OrderSuccess />
-                        </MenuRoute>
-                    }
-                />
+                <Route path="/menu" element={<MenuRoute><Menu /></MenuRoute>} />
+                <Route path="/cart" element={<MenuRoute><Cart /></MenuRoute>} />
+                <Route path="/checkout" element={<MenuRoute><Checkout /></MenuRoute>} />
+                <Route path="/order-success" element={<MenuRoute><OrderSuccess /></MenuRoute>} />
 
-                {/* Admin Routes */}
+                {/* Admin auth */}
                 <Route path="/admin/login" element={<AdminLogin />} />
+                <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+
+                {/* Admin panel (nested under AdminLayout) */}
                 <Route
-                    path="/admin"
-                    element={<Navigate to="/admin/dashboard" replace />}
-                />
-                <Route
-                    path="/admin/dashboard"
+                    path="/admin/*"
                     element={
                         <AdminRoute>
-                            <AdminDashboard />
+                            <AdminProvider>
+                                <AdminLayout />
+                            </AdminProvider>
                         </AdminRoute>
                     }
-                />
+                >
+                    <Route path="dashboard" element={<AdminDashboard />} />
+                    <Route path="menu" element={<AdminMenu />} />
+                    <Route path="categories" element={<AdminCategories />} />
+                    <Route path="orders" element={<AdminOrders />} />
+                    <Route path="users" element={<AdminUsers />} />
+                    <Route path="promotions" element={<AdminPromotions />} />
+                    <Route path="analytics" element={<AdminAnalytics />} />
+                    <Route path="settings" element={<AdminSettings />} />
+                    <Route path="logs" element={<AdminLogs />} />
+                </Route>
             </Routes>
         </div>
     );
 };
+
+// ─── App ───────────────────────────────────────────────────────────────────────
 
 const App = () => {
     return (
