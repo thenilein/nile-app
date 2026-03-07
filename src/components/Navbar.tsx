@@ -1,13 +1,12 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { useCart } from "../context/CartContext";
-import { LogOut, User as UserIcon, ShoppingBag } from "lucide-react";
+import { LogOut, User as UserIcon } from "lucide-react";
 import AuthModal from "./AuthModal";
 
 const Navbar = () => {
     const { user, isGuest, signOut } = useAuth();
-    const { totalItems } = useCart();
+
     const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
     return (
@@ -23,14 +22,7 @@ const Navbar = () => {
                 </Link>
 
                 <div className="flex items-center gap-6">
-                    <Link to="/cart" className="relative text-gray-600 hover:text-green-800 transition-colors">
-                        <ShoppingBag className="w-6 h-6" />
-                        {totalItems > 0 && (
-                            <span className="absolute -top-2 -right-2 bg-green-800 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
-                                {totalItems}
-                            </span>
-                        )}
-                    </Link>
+
 
                     {user ? (
                         <div className="flex items-center gap-4 border-l pl-6 border-gray-200">
