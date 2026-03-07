@@ -4,10 +4,12 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { MapPin, CreditCard, Phone, CheckCircle2 } from 'lucide-react';
+import { useLocation } from '../context/LocationContext';
 
 const Checkout = () => {
     const { items, totalPrice, clearCart } = useCart();
     const { user } = useAuth();
+    const { locationData } = useLocation();
     const navigate = useNavigate();
 
     const [loading, setLoading] = useState(false);
@@ -16,8 +18,8 @@ const Checkout = () => {
     const [formData, setFormData] = useState({
         phone: user?.phone || '',
         street: '',
-        locality: '',
-        city: 'Hyderabad', // Default or fetch from LocationContext if we had it
+        locality: locationData?.displayName || '',
+        city: locationData?.city || 'Hyderabad',
         paymentMethod: 'cod',
     });
 
