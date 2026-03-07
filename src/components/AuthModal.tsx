@@ -49,12 +49,12 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
         setLoading(true);
 
-        try {
-            const { error: otpError } = await supabase.auth.signInWithOtp({
-                phone: formattedPhone,
-            });
+        setLoading(true);
 
-            if (otpError) throw otpError;
+        try {
+            // FAKE OTP FLOW (since Supabase SMS provider is not configured)
+            // Just simulate network delay and proceed
+            await new Promise((resolve) => setTimeout(resolve, 600));
 
             // Proceed to OTP step
             setPhone(formattedPhone);

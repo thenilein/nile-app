@@ -119,48 +119,57 @@ alter table public.admin_logs   enable row level security;
 alter table public.notifications enable row level security;
 
 -- Promotions: public read active ones; admins manage all
+drop policy if exists "public read active promotions" on public.promotions;
 create policy "public read active promotions"
 on public.promotions for select
 using (is_active = true);
 
+drop policy if exists "admin manage promotions" on public.promotions;
 create policy "admin manage promotions"
 on public.promotions for all
 using (public.is_admin())
 with check (public.is_admin());
 
 -- Admin logs: admins only
+drop policy if exists "admin manage logs" on public.admin_logs;
 create policy "admin manage logs"
 on public.admin_logs for all
 using (public.is_admin())
 with check (public.is_admin());
 
 -- Notifications: admins only
+drop policy if exists "admin manage notifications" on public.notifications;
 create policy "admin manage notifications"
 on public.notifications for all
 using (public.is_admin())
 with check (public.is_admin());
 
 -- Admins can fully manage categories, products, settings
+drop policy if exists "admin manage categories" on public.categories;
 create policy "admin manage categories"
 on public.categories for all
 using (public.is_admin())
 with check (public.is_admin());
 
+drop policy if exists "admin manage products" on public.products;
 create policy "admin manage products"
 on public.products for all
 using (public.is_admin())
 with check (public.is_admin());
 
+drop policy if exists "admin manage settings" on public.settings;
 create policy "admin manage settings"
 on public.settings for all
 using (public.is_admin())
 with check (public.is_admin());
 
+drop policy if exists "admin manage orders" on public.orders;
 create policy "admin manage orders"
 on public.orders for all
 using (public.is_admin())
 with check (public.is_admin());
 
+drop policy if exists "admin manage profiles" on public.profiles;
 create policy "admin manage profiles"
 on public.profiles for all
 using (public.is_admin())

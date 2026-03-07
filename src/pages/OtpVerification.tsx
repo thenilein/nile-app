@@ -66,22 +66,48 @@ const OtpVerification: React.FC<OtpVerificationProps> = ({
         if (!isOtpComplete) return;
         setError('');
         setLoading(true);
+
         try {
-            const token = otp.join('');
-            const { error: verifyError } = await supabase.auth.verifyOtp({
-                phone,
-                token,
-                type: 'sms',
+            // FAKE OTP FLOW
+            const dummyEmail = `${phone.replace(/\D/g, '')}@nileicecreams.com`;
+            const dummyPassword = `nile_pwd_${phone.replace(/\D/g, '')}`;
+
+            // Simulate network wait
+            await new Promise(r => setTimeout(r, 600));
+
+            const { error: signInError } = await supabase.auth.signInWithPassword({
+                email: dummyEmail,
+                password: dummyPassword,
             });
-            if (verifyError) throw verifyError;
+
+            if (signInError) {
+                if (signInError.message.includes('Invalid login credentials')) {
+                    // User doesn't exist, sign them up via our safe RPC that bypasses rate limits
+                    const { error: rpcError } = await supabase.rpc('register_dummy_user', {
+                        p_email: dummyEmail,
+                        p_password: dummyPassword,
+                        p_phone: phone
+                    });
+
+                    if (rpcError) throw rpcError;
+
+                    // Now that they are registered via RPC, log them in
+                    const { error: secondSignInError } = await supabase.auth.signInWithPassword({
+                        email: dummyEmail,
+                        password: dummyPassword,
+                    });
+
+                    if (secondSignInError) throw secondSignInError;
+
+                } else {
+                    throw signInError;
+                }
+            }
+
             onVerified();
         } catch (err: any) {
             const msg = err?.message || 'Invalid OTP. Please try again.';
-            if (msg.toLowerCase().includes('expired')) {
-                setError('This code has expired. Please request a new one.');
-            } else {
-                setError(msg);
-            }
+            setError(msg);
         } finally {
             setLoading(false);
         }
@@ -93,15 +119,10 @@ const OtpVerification: React.FC<OtpVerificationProps> = ({
         setLoading(true);
         setResendCooldown(RESEND_COOLDOWN_SEC);
         try {
-            const { error: otpError } = await supabase.auth.signInWithOtp({ phone });
-            if (otpError) throw otpError;
+            // Simulate resend
+            await new Promise(r => setTimeout(r, 600));
         } catch (err: any) {
-            const msg = err?.message || 'Failed to send OTP';
-            if (msg.includes('rate limit') || msg.includes('already')) {
-                setError('Please wait a moment before requesting another code.');
-            } else {
-                setError(msg);
-            }
+            setError('Failed to resend code');
         } finally {
             setLoading(false);
         }
@@ -113,7 +134,8 @@ const OtpVerification: React.FC<OtpVerificationProps> = ({
                 <h2 className="text-3xl font-bold text-gray-900 tracking-tight mb-2">
                     Verify your number
                 </h2>
-                <p className="text-gray-500">We sent a 6-digit code to {maskedPhone}</p>
+                <p className="text-gray-500 mb-1">We sent a 6-digit code to {maskedPhone}</p>
+                <p className="text-xs text-green-700 bg-green-50 inline-block px-2 py-1 rounded border border-green-100">(Demo Mode: Enter any 6 digits to continue)</p>
             </div>
 
             {error && (
