@@ -1,6 +1,8 @@
 import React, { useState } from "react";
-import { Search } from "lucide-react";
-import { useLocation } from "../context/LocationContext";
+import { useNavigate } from "react-router-dom";
+import { Loader2, MapPin, ArrowRight } from "lucide-react";
+import { useLocation } from "../context/LocationContext.tsx";
+import LocationSearch from "../components/LocationSearch.tsx";
 
 const MapPinIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 mb-4">
@@ -26,16 +28,10 @@ const TruckIcon = () => (
     </svg>
 );
 
-const TargetIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
-        <circle cx="12" cy="12" r="10"></circle>
-        <circle cx="12" cy="12" r="3"></circle>
-    </svg>
-);
-
 const HeaderSection = () => {
     const [activeTab, setActiveTab] = useState("Delivery");
-    const { location, locationError, isLoadingLocation, getCurrentLocation } = useLocation();
+    const { locationData, locationError, isLoadingLocation, getCurrentLocation } = useLocation();
+    const navigate = useNavigate();
 
     return (
         <section className="flex flex-col items-center pt-16 pb-12 px-4">
@@ -45,8 +41,8 @@ const HeaderSection = () => {
                         key={tab}
                         onClick={() => setActiveTab(tab)}
                         className={`text-base font-semibold pb-2 border-b-2 transition-colors duration-200 ${activeTab === tab
-                                ? "border-green-800 text-green-800"
-                                : "border-transparent text-gray-500 hover:text-gray-800"
+                            ? "border-green-800 text-green-800"
+                            : "border-transparent text-gray-500 hover:text-gray-800"
                             }`}
                     >
                         {tab}
@@ -61,35 +57,56 @@ const HeaderSection = () => {
                 </h1>
 
                 <div className="flex flex-col md:flex-row items-center justify-center gap-6 w-full max-w-3xl mx-auto">
+                    {/* GPS Button */}
                     <button
                         type="button"
+                        id="use-current-location-btn"
                         onClick={getCurrentLocation}
                         disabled={isLoadingLocation}
                         className="flex items-center justify-center bg-green-800 hover:bg-green-900 disabled:opacity-70 disabled:cursor-not-allowed text-white font-medium py-3 px-6 rounded-md w-full md:w-auto transition-colors whitespace-nowrap shadow-sm"
                     >
-                        <TargetIcon />
-                        {isLoadingLocation ? "Getting location..." : "Use my current location"}
+                        {isLoadingLocation ? (
+                            <>
+                                <Loader2 className="mr-2 w-5 h-5 animate-spin" />
+                                Getting location...
+                            </>
+                        ) : (
+                            <>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+                                    <circle cx="12" cy="12" r="10" />
+                                    <circle cx="12" cy="12" r="3" />
+                                </svg>
+                                Use my current location
+                            </>
+                        )}
                     </button>
 
                     <span className="text-gray-400 font-medium whitespace-nowrap text-sm">OR</span>
 
-                    <div className="relative w-full md:flex-1">
-                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                            <Search className="w-5 h-5 text-green-800" />
-                        </div>
-                        <input
-                            type="text"
-                            className="w-full border border-gray-300 focus:border-green-800 focus:ring-1 focus:ring-green-800 rounded-md py-3 pl-12 pr-4 outline-none text-gray-700 transition-all font-medium placeholder-gray-400 shadow-sm"
-                            placeholder="Search street, locality..."
-                        />
-                    </div>
+                    {/* Search Component */}
+                    <LocationSearch />
                 </div>
-                {location && (
-                    <p className="mt-4 text-sm text-green-800 font-medium">
-                        Location: {location.lat.toFixed(6)}, {location.lng.toFixed(6)}
-                    </p>
+
+                {/* Location confirmed badge */}
+                {locationData && !isLoadingLocation && (
+                    <div className="mt-5 flex flex-col items-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <p className="flex items-center gap-1.5 text-sm text-green-800 font-medium">
+                            <MapPin className="w-4 h-4" />
+                            Location: {locationData.displayName}
+                        </p>
+                        <button
+                            id="start-ordering-btn"
+                            onClick={() => navigate("/menu")}
+                            className="flex items-center gap-2 bg-green-800 hover:bg-green-900 text-white font-semibold py-2.5 px-7 rounded-full shadow-md transition-all hover:shadow-lg hover:-translate-y-px"
+                        >
+                            Start ordering
+                            <ArrowRight className="w-4 h-4" />
+                        </button>
+                    </div>
                 )}
-                {locationError && (
+
+                {/* Error message */}
+                {locationError && !isLoadingLocation && (
                     <p className="mt-4 text-sm text-red-600 font-medium">{locationError}</p>
                 )}
             </div>

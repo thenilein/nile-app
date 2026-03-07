@@ -1,0 +1,224 @@
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Search, X, Loader2 } from "lucide-react";
+import { useLocation } from "../context/LocationContext.tsx";
+
+interface Suggestion {
+    displayName: string;
+    city: string;
+    state: string;
+    latitude: number;
+    longitude: number;
+}
+
+function highlightMatch(text: string, query: string) {
+    if (!query.trim()) return <span>{text}</span>;
+    const idx = text.toLowerCase().indexOf(query.toLowerCase());
+    if (idx === -1) return <span>{text}</span>;
+    return (
+        <span>
+            {text.slice(0, idx)}
+            <mark className="bg-green-100 text-green-900 rounded font-semibold">
+                {text.slice(idx, idx + query.length)}
+            </mark>
+            {text.slice(idx + query.length)}
+        </span>
+    );
+}
+
+async function fetchSuggestions(query: string): Promise<Suggestion[]> {
+    if (query.trim().length < 2) return [];
+    const url = new URL("https://nominatim.openstreetmap.org/search");
+    url.searchParams.set("q", `${query}, Tamil Nadu`);
+    url.searchParams.set("countrycodes", "in");
+    url.searchParams.set("addressdetails", "1");
+    url.searchParams.set("format", "json");
+    url.searchParams.set("limit", "8");
+
+    const res = await fetch(url.toString(), { headers: { "Accept-Language": "en" } });
+    if (!res.ok) return [];
+    const data = await res.json();
+
+    const results: Suggestion[] = [];
+    const seen = new Set<string>();
+
+    for (const item of data) {
+        const addr = item.address || {};
+        const state: string = addr.state || "";
+        if (state.toLowerCase() !== "tamil nadu") continue;
+
+        const city: string =
+            addr.city || addr.town || addr.village || addr.county || addr.suburb || "";
+        const displayName = city ? `${city}, Tamil Nadu` : `${item.display_name}`;
+        if (seen.has(displayName)) continue;
+        seen.add(displayName);
+
+        results.push({
+            displayName,
+            city,
+            state: "Tamil Nadu",
+            latitude: parseFloat(item.lat),
+            longitude: parseFloat(item.lon),
+        });
+    }
+    return results;
+}
+
+export const LocationSearch: React.FC = () => {
+    const { setLocationData, clearLocation } = useLocation();
+
+    const [query, setQuery] = useState("");
+    const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const [isOpen, setIsOpen] = useState(false);
+    const [activeIndex, setActiveIndex] = useState(-1);
+    const [selectedDisplay, setSelectedDisplay] = useState("");
+
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const wrapperRef = useRef<HTMLDivElement>(null);
+
+    const doSearch = useCallback(async (q: string) => {
+        if (q.trim().length < 2) {
+            setSuggestions([]);
+            setIsOpen(false);
+            return;
+        }
+        setIsSearching(true);
+        const results = await fetchSuggestions(q);
+        setSuggestions(results);
+        setIsOpen(results.length > 0);
+        setIsSearching(false);
+    }, []);
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        setQuery(val);
+        setSelectedDisplay("");
+        setActiveIndex(-1);
+
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => doSearch(val), 350);
+    };
+
+    const handleSelect = (s: Suggestion) => {
+        setQuery(s.displayName);
+        setSelectedDisplay(s.displayName);
+        setSuggestions([]);
+        setIsOpen(false);
+        setActiveIndex(-1);
+        setLocationData({
+            latitude: s.latitude,
+            longitude: s.longitude,
+            city: s.city,
+            state: s.state,
+            displayName: s.displayName,
+        });
+    };
+
+    const handleClear = () => {
+        setQuery("");
+        setSelectedDisplay("");
+        setSuggestions([]);
+        setIsOpen(false);
+        clearLocation();
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (!isOpen) return;
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setActiveIndex((i) => Math.min(i + 1, suggestions.length - 1));
+        } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setActiveIndex((i) => Math.max(i - 1, -1));
+        } else if (e.key === "Enter" && activeIndex >= 0) {
+            e.preventDefault();
+            handleSelect(suggestions[activeIndex]);
+        } else if (e.key === "Escape") {
+            setIsOpen(false);
+            setActiveIndex(-1);
+        }
+    };
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    return (
+        <div ref={wrapperRef} className="relative w-full md:flex-1">
+            {/* Input */}
+            <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    {isSearching ? (
+                        <Loader2 className="w-5 h-5 text-green-700 animate-spin" />
+                    ) : (
+                        <Search className="w-5 h-5 text-green-800" />
+                    )}
+                </div>
+                <input
+                    type="text"
+                    value={query}
+                    onChange={handleChange}
+                    onKeyDown={handleKeyDown}
+                    onFocus={() => suggestions.length > 0 && setIsOpen(true)}
+                    className="w-full border border-gray-300 focus:border-green-800 focus:ring-1 focus:ring-green-800 rounded-md py-3 pl-12 pr-10 outline-none text-gray-700 transition-all font-medium placeholder-gray-400 shadow-sm"
+                    placeholder="Search city, locality in Tamil Nadu..."
+                    autoComplete="off"
+                    aria-label="Search location"
+                    aria-autocomplete="list"
+                    aria-expanded={isOpen}
+                />
+                {query && (
+                    <button
+                        type="button"
+                        onClick={handleClear}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
+                        aria-label="Clear location"
+                    >
+                        <X className="w-4 h-4" />
+                    </button>
+                )}
+            </div>
+
+            {/* Dropdown */}
+            {isOpen && suggestions.length > 0 && (
+                <ul
+                    role="listbox"
+                    className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden text-sm"
+                >
+                    {suggestions.map((s, i) => (
+                        <li
+                            key={s.displayName}
+                            role="option"
+                            aria-selected={i === activeIndex}
+                            onMouseDown={() => handleSelect(s)}
+                            onMouseEnter={() => setActiveIndex(i)}
+                            className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${i === activeIndex
+                                    ? "bg-green-50 text-green-900"
+                                    : "text-gray-700 hover:bg-gray-50"
+                                }`}
+                        >
+                            <span className="text-green-700 flex-shrink-0">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                                    <circle cx="12" cy="10" r="3" />
+                                </svg>
+                            </span>
+                            <span className="truncate">
+                                {highlightMatch(s.displayName, query)}
+                            </span>
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </div>
+    );
+};
+
+export default LocationSearch;
