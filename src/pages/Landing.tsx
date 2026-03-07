@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Loader2, MapPin, ArrowRight, Edit2 } from "lucide-react";
 import { useLocation } from "../context/LocationContext.tsx";
-import LocationSearch from "../components/LocationSearch.tsx";
+import LocationMapPicker from "../components/LocationMapPicker.tsx";
 import AuthModal from "../components/AuthModal.tsx";
 import { useAuth } from "../context/AuthContext.tsx";
 import { useNavigate } from "react-router-dom";
@@ -72,91 +72,55 @@ const HeaderSection = () => {
                     Set your delivery location to get started.
                 </h1>
 
-                {/* ── STATE A: No location selected ── */}
-                {!locationSelected && (
-                    <div className="flex flex-col md:flex-row items-center justify-center gap-6 w-full max-w-3xl mx-auto">
-                        {/* GPS Button */}
-                        <button
-                            type="button"
-                            id="use-current-location-btn"
-                            onClick={getCurrentLocation}
-                            disabled={isLoadingLocation}
-                            className="flex items-center justify-center bg-green-800 hover:bg-green-900 disabled:opacity-70 disabled:cursor-not-allowed text-white font-medium py-3 px-6 rounded-md w-full md:w-auto transition-colors whitespace-nowrap shadow-sm"
-                        >
-                            {isLoadingLocation ? (
-                                <>
-                                    <Loader2 className="mr-2 w-5 h-5 animate-spin" />
-                                    Getting location...
-                                </>
-                            ) : (
-                                <>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
-                                        <circle cx="12" cy="12" r="10" />
-                                        <circle cx="12" cy="12" r="3" />
-                                    </svg>
-                                    Use my current location
-                                </>
-                            )}
-                        </button>
+                {/* ── UNIFIED MAP LOCATION PICKER ── */}
+                <div className="mt-8 mb-6 animate-in fade-in slide-in-from-bottom-2 duration-300 w-full flex flex-col items-center">
+                    <LocationMapPicker />
 
-                        <span className="text-gray-400 font-medium whitespace-nowrap text-sm">OR</span>
+                    {/* Feedback Under Map */}
+                    {locationSelected && (
+                        <div className="w-full max-w-4xl mt-6">
+                            <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-green-50 border border-green-100 rounded-xl px-6 py-5">
+                                <div className="flex flex-col items-center md:items-start text-center md:text-left gap-1">
+                                    <div className="flex items-center gap-2">
+                                        <MapPin className="w-4 h-4 text-green-700 flex-shrink-0" />
+                                        <span className="text-green-900 font-semibold text-[15px]">
+                                            {locationData!.displayName}
+                                        </span>
+                                    </div>
 
-                        {/* Search Component */}
-                        <LocationSearch />
-                    </div>
-                )}
-
-                {/* ── STATE B: Location selected ── */}
-                {locationSelected && (
-                    <div className="flex flex-col items-center gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        {/* Location display */}
-                        <div className="flex flex-col items-center gap-2 bg-green-50 border border-green-100 rounded-xl px-5 py-4 w-full max-w-md">
-                            <div className="flex items-center gap-2 w-full justify-center">
-                                <MapPin className="w-4 h-4 text-green-700 flex-shrink-0" />
-                                <span className="text-green-900 font-semibold text-sm text-center">
-                                    {locationData!.displayName}
-                                </span>
-                                <button
-                                    type="button"
-                                    onClick={clearLocation}
-                                    title="Change location"
-                                    className="ml-2 text-gray-400 hover:text-green-700 transition-colors"
-                                >
-                                    <Edit2 className="w-3.5 h-3.5" />
-                                </button>
-                            </div>
-
-                            {nearestOutlet && (
-                                <div className="mt-1 pt-3 border-t border-green-200/50 w-full text-center">
-                                    <p className="text-xs text-green-800/70 font-medium mb-1">Nearest Outlet</p>
-                                    <p className="text-sm font-bold text-green-900">
-                                        Nile Ice Cream {nearestOutlet.name}
-                                    </p>
-                                    <p className="text-xs text-green-700 mt-1">
-                                        Distance: {nearestOutlet.distance_km.toFixed(2)} km
-                                    </p>
+                                    {nearestOutlet && (
+                                        <div className="mt-1 flex items-center gap-3">
+                                            <p className="text-sm font-bold text-green-900">
+                                                Nile Ice Cream {nearestOutlet.name}
+                                            </p>
+                                            <span className="w-1 h-1 bg-green-300 rounded-full"></span>
+                                            <p className="text-sm font-medium text-green-700">
+                                                Distance: {nearestOutlet.distance_km.toFixed(2)} km
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
-                            )}
-                        </div>
 
-                        {/* Order action button or Unserviceable message */}
-                        {isServiceable ? (
-                            <button
-                                id="start-ordering-btn"
-                                onClick={handleStartOrdering}
-                                className="flex items-center gap-2 bg-green-800 hover:bg-green-900 text-white font-semibold py-3 px-8 rounded-full shadow-md transition-all hover:shadow-lg hover:-translate-y-px"
-                            >
-                                Start ordering
-                                <ArrowRight className="w-4 h-4" />
-                            </button>
-                        ) : (
-                            <div className="mt-2 text-center bg-orange-50 text-orange-800 border border-orange-200 rounded-xl py-3 px-5">
-                                <p className="font-semibold text-sm">No outlets near your location yet.</p>
-                                <p className="text-xs opacity-80 mt-1">We currently only deliver within 7km. Check back soon!</p>
+                                {/* Order action button or Unserviceable message */}
+                                {isServiceable ? (
+                                    <button
+                                        id="start-ordering-btn"
+                                        onClick={handleStartOrdering}
+                                        className="flex-shrink-0 flex items-center justify-center gap-2 bg-green-800 hover:bg-green-900 text-white font-semibold py-3.5 px-8 rounded-full shadow-md transition-all hover:shadow-lg hover:-translate-y-px w-full md:w-auto"
+                                    >
+                                        Start ordering
+                                        <ArrowRight className="w-4 h-4" />
+                                    </button>
+                                ) : (
+                                    <div className="flex flex-col items-center md:items-end text-center md:text-right text-orange-800">
+                                        <p className="font-semibold text-sm">No outlets near your location yet.</p>
+                                        <p className="text-xs opacity-80 mt-0.5">We currently only deliver within 7km. Check back soon!</p>
+                                    </div>
+                                )}
                             </div>
-                        )}
-                    </div>
-                )}
+                        </div>
+                    )}
+                </div>
 
                 {/* Error message (shown only when no location and no loading) */}
                 {locationError && !isLoadingLocation && !locationSelected && (

@@ -27,6 +27,7 @@ interface LocationContextType {
     locationData: LocationData | null;
     locationError: string | null;
     isLoadingLocation: boolean;
+    outlets: Outlet[];
     nearestOutlet: Outlet | null;
     isServiceable: boolean;
     setLocationData: (data: LocationData) => void;
@@ -73,8 +74,20 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const [locationError, setLocationError] = useState<string | null>(null);
     const [isLoadingLocation, setIsLoadingLocation] = useState(false);
 
+    const [outlets, setOutlets] = useState<Outlet[]>([]);
     const [nearestOutlet, setNearestOutlet] = useState<Outlet | null>(null);
     const [isServiceable, setIsServiceable] = useState<boolean>(false);
+
+    // Fetch active outlets to draw on the map
+    useEffect(() => {
+        const fetchOutlets = async () => {
+            const { data } = await supabase.from('outlets').select('*').eq('is_active', true);
+            if (data) {
+                setOutlets(data as Outlet[]);
+            }
+        };
+        fetchOutlets();
+    }, []);
 
     // Fetch nearest outlet whenever location changes
     useEffect(() => {
@@ -207,6 +220,7 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 locationData,
                 locationError,
                 isLoadingLocation,
+                outlets,
                 nearestOutlet,
                 isServiceable,
                 setLocationData,
