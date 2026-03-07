@@ -5,6 +5,7 @@ import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { LocationProvider } from "./context/LocationContext";
 
 // Component to protect authenticated routes (if needed in future)
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -66,9 +67,11 @@ const AppRoutes = () => {
 const App = () => {
     return (
         <AuthProvider>
-            <Router>
-                <AppRoutes />
-            </Router>
+            <LocationProvider>
+                <Router>
+                    <AppRoutes />
+                </Router>
+            </LocationProvider>
         </AuthProvider>
     );
 };
