@@ -1,8 +1,10 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Loader2, MapPin, ArrowRight } from "lucide-react";
+import { Loader2, MapPin, ArrowRight, Edit2 } from "lucide-react";
 import { useLocation } from "../context/LocationContext.tsx";
 import LocationSearch from "../components/LocationSearch.tsx";
+import AuthModal from "../components/AuthModal.tsx";
+import { useAuth } from "../context/AuthContext.tsx";
+import { useNavigate } from "react-router-dom";
 
 const MapPinIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 mb-4">
@@ -30,8 +32,22 @@ const TruckIcon = () => (
 
 const HeaderSection = () => {
     const [activeTab, setActiveTab] = useState("Delivery");
-    const { locationData, locationError, isLoadingLocation, getCurrentLocation } = useLocation();
+    const [authModalOpen, setAuthModalOpen] = useState(false);
+
+    const { locationData, locationError, isLoadingLocation, getCurrentLocation, clearLocation } = useLocation();
+    const { user, isGuest } = useAuth();
     const navigate = useNavigate();
+
+    const locationSelected = !!locationData && !isLoadingLocation;
+
+    const handleStartOrdering = () => {
+        // Already authenticated or guest — go straight to menu
+        if (user || isGuest) {
+            navigate("/menu");
+        } else {
+            setAuthModalOpen(true);
+        }
+    };
 
     return (
         <section className="flex flex-col items-center pt-16 pb-12 px-4">
@@ -56,48 +72,64 @@ const HeaderSection = () => {
                     Set your delivery location to get started.
                 </h1>
 
-                <div className="flex flex-col md:flex-row items-center justify-center gap-6 w-full max-w-3xl mx-auto">
-                    {/* GPS Button */}
-                    <button
-                        type="button"
-                        id="use-current-location-btn"
-                        onClick={getCurrentLocation}
-                        disabled={isLoadingLocation}
-                        className="flex items-center justify-center bg-green-800 hover:bg-green-900 disabled:opacity-70 disabled:cursor-not-allowed text-white font-medium py-3 px-6 rounded-md w-full md:w-auto transition-colors whitespace-nowrap shadow-sm"
-                    >
-                        {isLoadingLocation ? (
-                            <>
-                                <Loader2 className="mr-2 w-5 h-5 animate-spin" />
-                                Getting location...
-                            </>
-                        ) : (
-                            <>
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
-                                    <circle cx="12" cy="12" r="10" />
-                                    <circle cx="12" cy="12" r="3" />
-                                </svg>
-                                Use my current location
-                            </>
-                        )}
-                    </button>
+                {/* ── STATE A: No location selected ── */}
+                {!locationSelected && (
+                    <div className="flex flex-col md:flex-row items-center justify-center gap-6 w-full max-w-3xl mx-auto">
+                        {/* GPS Button */}
+                        <button
+                            type="button"
+                            id="use-current-location-btn"
+                            onClick={getCurrentLocation}
+                            disabled={isLoadingLocation}
+                            className="flex items-center justify-center bg-green-800 hover:bg-green-900 disabled:opacity-70 disabled:cursor-not-allowed text-white font-medium py-3 px-6 rounded-md w-full md:w-auto transition-colors whitespace-nowrap shadow-sm"
+                        >
+                            {isLoadingLocation ? (
+                                <>
+                                    <Loader2 className="mr-2 w-5 h-5 animate-spin" />
+                                    Getting location...
+                                </>
+                            ) : (
+                                <>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+                                        <circle cx="12" cy="12" r="10" />
+                                        <circle cx="12" cy="12" r="3" />
+                                    </svg>
+                                    Use my current location
+                                </>
+                            )}
+                        </button>
 
-                    <span className="text-gray-400 font-medium whitespace-nowrap text-sm">OR</span>
+                        <span className="text-gray-400 font-medium whitespace-nowrap text-sm">OR</span>
 
-                    {/* Search Component */}
-                    <LocationSearch />
-                </div>
+                        {/* Search Component */}
+                        <LocationSearch />
+                    </div>
+                )}
 
-                {/* Location confirmed badge */}
-                {locationData && !isLoadingLocation && (
-                    <div className="mt-5 flex flex-col items-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        <p className="flex items-center gap-1.5 text-sm text-green-800 font-medium">
-                            <MapPin className="w-4 h-4" />
-                            Location: {locationData.displayName}
-                        </p>
+                {/* ── STATE B: Location selected ── */}
+                {locationSelected && (
+                    <div className="flex flex-col items-center gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        {/* Location display */}
+                        <div className="flex items-center gap-2 bg-green-50 border border-green-100 rounded-xl px-5 py-3">
+                            <MapPin className="w-4 h-4 text-green-700 flex-shrink-0" />
+                            <span className="text-green-900 font-semibold text-sm">
+                                {locationData!.displayName}
+                            </span>
+                            <button
+                                type="button"
+                                onClick={clearLocation}
+                                title="Change location"
+                                className="ml-2 text-gray-400 hover:text-green-700 transition-colors"
+                            >
+                                <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+
+                        {/* Start Ordering button */}
                         <button
                             id="start-ordering-btn"
-                            onClick={() => navigate("/menu")}
-                            className="flex items-center gap-2 bg-green-800 hover:bg-green-900 text-white font-semibold py-2.5 px-7 rounded-full shadow-md transition-all hover:shadow-lg hover:-translate-y-px"
+                            onClick={handleStartOrdering}
+                            className="flex items-center gap-2 bg-green-800 hover:bg-green-900 text-white font-semibold py-3 px-8 rounded-full shadow-md transition-all hover:shadow-lg hover:-translate-y-px"
                         >
                             Start ordering
                             <ArrowRight className="w-4 h-4" />
@@ -105,11 +137,14 @@ const HeaderSection = () => {
                     </div>
                 )}
 
-                {/* Error message */}
-                {locationError && !isLoadingLocation && (
+                {/* Error message (shown only when no location and no loading) */}
+                {locationError && !isLoadingLocation && !locationSelected && (
                     <p className="mt-4 text-sm text-red-600 font-medium">{locationError}</p>
                 )}
             </div>
+
+            {/* Auth Modal */}
+            <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
         </section>
     );
 };
