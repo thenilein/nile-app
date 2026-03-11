@@ -1,24 +1,25 @@
 import React, { useState, useRef, useEffect } from "react";
 import { ArrowLeft, CheckCircle2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { supabase } from "../lib/supabase";
 
 const OTP_LENGTH = 6;
-const RESEND_COOLDOWN_SEC = 60;
+const RESEND_COOLDOWN_SEC = 30;
 
 interface OtpVerificationProps {
-  phone: string;
   maskedPhone: string;
   onBack: () => void;
-  onVerified: () => void;
+  /** Called with the 6-digit OTP string — parent calls window.sendOtp.verifyOtp */
+  onVerifyOtp: (otp: string) => void;
+  /** Called to resend — parent calls window.sendOtp.retryOtp */
+  onResendOtp: () => void;
   showToast: (type: "error" | "success", msg: string) => void;
 }
 
 const OtpVerification: React.FC<OtpVerificationProps> = ({
-  phone,
   maskedPhone,
   onBack,
-  onVerified,
+  onVerifyOtp,
+  onResendOtp,
   showToast,
 }) => {
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
@@ -33,6 +34,7 @@ const OtpVerification: React.FC<OtpVerificationProps> = ({
   const isOtpComplete =
     otp.every((d) => d !== "") && otp.join("").length === OTP_LENGTH;
 
+  // Countdown timer
   useEffect(() => {
     if (resendCooldown <= 0) return;
     const t = setInterval(
@@ -47,24 +49,34 @@ const OtpVerification: React.FC<OtpVerificationProps> = ({
     setTimeout(() => otpInputRefs.current[0]?.focus(), 100);
   }, []);
 
+  // Listen for MSG91 success/failure events dispatched by AuthModal
+  useEffect(() => {
+    const onSuccess = () => {
+      setLoading(false);
+      setSuccess(true);
+    };
+    const onFailure = () => {
+      setLoading(false);
+      triggerShakeAndReset();
+    };
+    window.addEventListener("msg91-success", onSuccess);
+    window.addEventListener("msg91-failure", onFailure);
+    return () => {
+      window.removeEventListener("msg91-success", onSuccess);
+      window.removeEventListener("msg91-failure", onFailure);
+    };
+  }, []);
+
   const handleOtpChange = (index: number, value: string) => {
     if (!/^\d*$/.test(value)) return;
     const newOtp = [...otp];
     newOtp[index] = value.slice(-1);
     setOtp(newOtp);
 
-    // Auto advance
     if (value && index < OTP_LENGTH - 1) {
       otpInputRefs.current[index + 1]?.focus();
     }
   };
-
-  // Auto submit effect when all filled
-  useEffect(() => {
-    if (isOtpComplete && !loading && !success && !shake) {
-      handleVerify();
-    }
-  }, [isOtpComplete]);
 
   const handleOtpKeyDown = (
     index: number,
@@ -102,58 +114,28 @@ const OtpVerification: React.FC<OtpVerificationProps> = ({
     }, 500);
   };
 
-  const handleVerify = async (e?: React.FormEvent) => {
+  const handleVerify = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!isOtpComplete) return;
+    if (!isOtpComplete || loading || success) return;
     setLoading(true);
-
-    try {
-      const rawPhone = phone.replace("+91", "");
-      const { data, error } = await supabase.functions.invoke("verify-otp", {
-        body: { phone: rawPhone, otp: otp.join("") },
-      });
-
-      if (error) throw error;
-
-      if (data?.success) {
-        setSuccess(true);
-        showToast("success", "Verified successfully!");
-        setTimeout(() => {
-          onVerified();
-        }, 800);
-      } else {
-        showToast("error", "Wrong OTP. Try again.");
-        triggerShakeAndReset();
-      }
-    } catch (err: any) {
-      showToast("error", "Verification failed. Try again.");
-      triggerShakeAndReset();
-    } finally {
-      setLoading(false);
-    }
+    // MSG91 SDK verifies asynchronously; result arrives via msg91-success/failure events
+    onVerifyOtp(otp.join(""));
   };
 
-  const handleResend = async () => {
-    if (resendCooldown > 0) return;
+  // Auto-submit when all 6 digits are filled
+  useEffect(() => {
+    if (isOtpComplete && !loading && !success && !shake) {
+      handleVerify();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOtpComplete]);
 
+  const handleResend = () => {
+    if (resendCooldown > 0) return;
     setOtp(["", "", "", "", "", ""]);
     otpInputRefs.current[0]?.focus();
-
-    try {
-      const rawPhone = phone.replace("+91", "");
-      const { data } = await supabase.functions.invoke("resend-otp", {
-        body: { phone: rawPhone },
-      });
-
-      if (data?.type === "success") {
-        setResendCooldown(RESEND_COOLDOWN_SEC);
-        showToast("success", `OTP resent to ${maskedPhone}`);
-      } else {
-        showToast("error", "Resend failed. Try again.");
-      }
-    } catch (err: any) {
-      showToast("error", "Network error.");
-    }
+    onResendOtp();
+    setResendCooldown(RESEND_COOLDOWN_SEC);
   };
 
   const shakeAnimation = {

@@ -6,12 +6,8 @@ import OtpVerification from "../pages/OtpVerification";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
-declare global {
-  interface Window {
-    initSendOTP: any;
-    sendOtp: any;
-  }
-}
+const MSG91_WIDGET_ID = "346869635532313534353235";
+const MSG91_TOKEN_AUTH = "427916TifOeIbAN69b05c02P1";
 
 type AuthModalProps = {
   isOpen: boolean;
@@ -148,16 +144,19 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       // Dispatch event to show success animation in OtpVerification
       window.dispatchEvent(new CustomEvent("msg91-success", { detail: data }));
 
-      // Delay close slightly to let success animation play
+      // Delay close slightly to let success animation play, then let Landing/
+      // onAuthStateChange handle routing automatically (avoids race with MenuRoute)
       setTimeout(() => {
         if (localStorage.getItem("pendingCheckout") === "true") {
           localStorage.removeItem("pendingCheckout");
           window.dispatchEvent(new CustomEvent("open-checkout"));
         }
         handleClose();
-        navigate("/menu");
+        // Note: no explicit navigate here — Landing's useEffect redirects to /menu
+        // once onAuthStateChange updates the user in AuthContext
         showToast("success", "Welcome to Nile Ice Creams! 🎉");
       }, 800);
+
     } catch (error) {
       console.error("Login error", error);
       showToast("error", "Failed to complete login");
@@ -165,7 +164,29 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  const handleSendOtp = async (e?: React.FormEvent | React.MouseEvent) => {
+  const initMSG91 = (phoneNum: string) => {
+    if (!window.initSendOTP) {
+      showToast("error", "OTP service is loading, please try again.");
+      setLoading(false);
+      return;
+    }
+    window.initSendOTP({
+      widgetId: MSG91_WIDGET_ID,
+      tokenAuth: MSG91_TOKEN_AUTH,
+      identifier: `+91${phoneNum}`,
+      exposeMethods: true,
+      success: async (data) => {
+        console.log("OTP verified", data);
+        await handleMSG91Success(data);
+      },
+      failure: (error) => {
+        console.error("OTP failed", error);
+        showToast("error", "OTP verification failed. Try again.");
+      },
+    });
+  };
+
+  const handleSendOtp = (e?: React.FormEvent | React.MouseEvent) => {
     if (e) e.preventDefault();
     setError("");
 
@@ -186,30 +207,36 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     }
 
     setLoading(true);
-
     try {
-      const { data, error } = await supabase.functions.invoke('send-otp', {
-        body: { phone }
-      });
-
-      if (error) throw error;
-
-      if (data.type === "success") {
-        showToast(
-          "success",
-          `OTP sent to +91 ${phone.substring(0, 2)}XXX ${phone.substring(7, 10)}`,
-        );
-        setStep("otp");
-      } else {
-        showToast("error", "Failed to send OTP. Try again.");
-        setError(data.message || "Failed to send OTP");
-      }
-    } catch (err: any) {
-      setError("Network error. Check connection.");
-      showToast("error", "Network error. Check connection.");
+      initMSG91(phone);
+      showToast(
+        "success",
+        `OTP sent to +91 ${phone.substring(0, 2)}XXX ${phone.substring(7, 10)}`,
+      );
+      setStep("otp");
+    } catch {
+      setError("Failed to send OTP. Try again.");
+      showToast("error", "Failed to send OTP.");
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleVerifyOtp = (otp: string) => {
+    if (!window.sendOtp) {
+      showToast("error", "OTP session expired. Please request a new OTP.");
+      return;
+    }
+    window.sendOtp.verifyOtp(otp);
+  };
+
+  const handleResendOtp = () => {
+    if (!window.sendOtp) {
+      initMSG91(phone);
+      return;
+    }
+    window.sendOtp.retryOtp();
+    showToast("success", `OTP resent to +91 ${phone}`);
   };
 
   const handleVerified = () => {
@@ -409,7 +436,22 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                           )}
                         </button>
 
-                        <button onClick={handleGuest} type="button"></button>
+                        <div className="relative">
+                          <div className="absolute inset-0 flex items-center">
+                            <div className="w-full border-t border-gray-100" />
+                          </div>
+                          <div className="relative flex justify-center text-sm">
+                            <span className="px-2 bg-white text-gray-400">or</span>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={handleGuest}
+                          type="button"
+                          className="w-full flex justify-center items-center py-3 px-4 rounded-xl text-[14px] font-medium text-gray-500 border border-gray-200 hover:bg-gray-50 hover:text-gray-700 transition-all duration-200 active:scale-[0.98]"
+                        >
+                          Continue as guest
+                        </button>
                       </div>
                     </div>
                   </motion.div>
@@ -424,13 +466,14 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                     className="h-full w-full"
                   >
                     <OtpVerification
-                      phone={"+91" + phone}
                       maskedPhone={
                         "+91 " +
                         phone.substring(0, 2) +
                         "XXX X" +
                         phone.substring(6, 10)
                       }
+                      onVerifyOtp={handleVerifyOtp}
+                      onResendOtp={handleResendOtp}
                       onBack={() => setStep("phone")}
                       showToast={showToast}
                     />

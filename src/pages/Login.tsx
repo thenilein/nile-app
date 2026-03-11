@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
 import { Smartphone, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import OtpVerification from './OtpVerification';
 
 const MOBILE_LENGTH = 10;
+const MSG91_WIDGET_ID = "346869635532313534353235";
+const MSG91_TOKEN_AUTH = "427916TifOeIbAN69b05c02P1";
 
 const Login = () => {
     const navigate = useNavigate();
@@ -15,12 +16,11 @@ const Login = () => {
     const [toastMsg, setToastMsg] = useState<{ type: 'error' | 'success', text: string } | null>(null);
     const [loading, setLoading] = useState(false);
 
-    const fullMobile = `+91${mobile}`;
     const isMobileValid = mobile.length === MOBILE_LENGTH;
 
     const showToast = (type: 'error' | 'success', text: string) => {
         setToastMsg({ type, text });
-        setTimeout(() => setToastMsg(null), 3000);
+        setTimeout(() => setToastMsg(null), 3500);
     };
 
     const handleMobileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -29,41 +29,67 @@ const Login = () => {
         setError('');
     };
 
-    const sendOtp = async () => {
-        setError('');
+    // ── MSG91 init (called once per OTP send / resend attempt) ──────────────
+    const initMSG91 = (phone: string) => {
+        if (!window.initSendOTP) {
+            showToast('error', 'OTP service is loading, please try again in a moment.');
+            setLoading(false);
+            return;
+        }
+
+        window.initSendOTP({
+            widgetId: MSG91_WIDGET_ID,
+            tokenAuth: MSG91_TOKEN_AUTH,
+            identifier: `+91${phone}`,
+            exposeMethods: true,
+            success: async (data) => {
+                // MSG91 has verified the OTP — data.message is the access token
+                console.log('OTP verified', data);
+                showToast('success', 'Welcome to Nile Ice Creams! 🎉');
+                navigate('/');
+            },
+            failure: (error) => {
+                console.error('OTP failed', error);
+                showToast('error', 'OTP verification failed. Please try again.');
+            },
+        });
+    };
+
+    // ── Send OTP (step 1 → step 2) ──────────────────────────────────────────
+    const sendOtp = () => {
+        if (!isMobileValid) return;
         setLoading(true);
+        setError('');
         try {
-            const { data, error: fnError } = await supabase.functions.invoke('send-otp', {
-                body: { phone: mobile }
-            });
-
-            if (fnError) throw fnError;
-
-            if (data?.type === 'success') {
-                setStep('otp');
-            } else {
-                const msg = data?.message || 'Failed to send OTP. Please try again.';
-                setError(msg);
-            }
-        } catch (err: any) {
-            const msg = err?.message || 'Failed to send OTP';
-            if (msg.includes('rate limit') || msg.includes('already')) {
-                setError('Please wait a moment before requesting another code.');
-            } else {
-                setError(msg);
-            }
+            initMSG91(mobile);
+            setStep('otp');
+            showToast('success', `OTP sent to +91 ${mobile}`);
+        } catch {
+            showToast('error', 'Failed to send OTP. Please try again.');
         } finally {
             setLoading(false);
         }
     };
 
-    const handleContinue = () => {
-        if (!isMobileValid) return;
-        sendOtp();
+    // ── Verify OTP (called from OtpVerification) ────────────────────────────
+    const verifyOtp = (otp: string) => {
+        if (!window.sendOtp) {
+            showToast('error', 'OTP session expired. Please request a new OTP.');
+            return;
+        }
+        // Result comes back via the success/failure callbacks set in initMSG91
+        window.sendOtp.verifyOtp(otp);
     };
 
-    const handleContinueAsGuest = () => {
-        navigate('/');
+    // ── Resend OTP (called from OtpVerification) ────────────────────────────
+    const resendOtp = () => {
+        if (!window.sendOtp) {
+            // Session may have expired — reinitialise
+            initMSG91(mobile);
+            return;
+        }
+        window.sendOtp.retryOtp();
+        showToast('success', `OTP resent to +91 ${mobile}`);
     };
 
     const handleBackToMobile = () => {
@@ -79,10 +105,15 @@ const Login = () => {
                         initial={{ opacity: 0, y: -20, scale: 0.9 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                        className={`fixed top-6 left-1/2 -translate-x-1/2 z-[100] px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 max-w-[90vw] ${toastMsg.type === 'error' ? 'bg-red-500 text-white' : 'bg-green-600 text-white'
-                            }`}
+                        className={`fixed top-6 left-1/2 -translate-x-1/2 z-[100] px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 max-w-[90vw] ${
+                            toastMsg.type === 'error' ? 'bg-red-500 text-white' : 'bg-green-600 text-white'
+                        }`}
                     >
-                        {toastMsg.type === 'error' ? <AlertCircle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                        {toastMsg.type === 'error' ? (
+                            <AlertCircle className="w-4 h-4" />
+                        ) : (
+                            <CheckCircle2 className="w-4 h-4" />
+                        )}
                         <span className="text-sm font-semibold">{toastMsg.text}</span>
                     </motion.div>
                 )}
@@ -127,6 +158,7 @@ const Login = () => {
                                             maxLength={MOBILE_LENGTH}
                                             value={mobile}
                                             onChange={handleMobileChange}
+                                            onKeyDown={(e) => e.key === 'Enter' && sendOtp()}
                                             className="block w-full pl-10 pr-3 py-3 border-0 focus:ring-0 outline-none"
                                             placeholder="10-digit mobile number"
                                             autoFocus
@@ -142,7 +174,7 @@ const Login = () => {
 
                             <button
                                 type="button"
-                                onClick={handleContinue}
+                                onClick={sendOtp}
                                 disabled={!isMobileValid || loading}
                                 className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-green-800 hover:bg-green-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
@@ -160,7 +192,7 @@ const Login = () => {
 
                             <button
                                 type="button"
-                                onClick={handleContinueAsGuest}
+                                onClick={() => navigate('/')}
                                 className="w-full flex justify-center py-3 px-4 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-800 transition-colors"
                             >
                                 Continue as guest
@@ -169,9 +201,9 @@ const Login = () => {
                     </>
                 ) : (
                     <OtpVerification
-                        phone={fullMobile}
                         maskedPhone={`+91 ${mobile}`}
-                        onVerified={() => navigate('/')}
+                        onVerifyOtp={verifyOtp}
+                        onResendOtp={resendOtp}
                         onBack={handleBackToMobile}
                         showToast={showToast}
                     />
