@@ -176,7 +176,7 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
         setPhoneError('');
     };
 
-    // ── MSG91 OTP flow ─────────────────────────────────────────────────
+    // ── MSG91 OTP flow ────────────────────────────────────────────────
     const initMSG91 = (phoneNum: string) => {
         if (!window.initSendOTP) {
             showToast('error', 'OTP service is loading, please try again.');
@@ -196,7 +196,10 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
                     if (anonError) throw anonError;
                     const userId = anonData?.user?.id;
                     if (userId) {
-                        await supabase.from('profiles').upsert({ id: userId, phone: phoneNum, role: 'customer', created_at: new Date().toISOString() }, { onConflict: 'id' });
+                        await supabase.from('profiles').upsert(
+                            { id: userId, phone: phoneNum, role: 'customer', created_at: new Date().toISOString() },
+                            { onConflict: 'id' }
+                        );
                     }
                     setOtpLoading(false);
                     setOtpStep('verified');
@@ -222,18 +225,13 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
             return;
         }
         setSendingOtp(true);
-        try {
-            initMSG91(phone);
-            setOtpStep('sent');
-            setResendCooldown(RESEND_COOLDOWN);
-            setOtpDigits(['', '', '', '', '', '']);
-            showToast('success', `OTP sent to +91 ${phone.slice(0, 2)}XXXXX${phone.slice(7)}`);
-            setTimeout(() => otpRefs.current[0]?.focus(), 200);
-        } catch {
-            showToast('error', 'Failed to send OTP.');
-        } finally {
-            setSendingOtp(false);
-        }
+        initMSG91(phone);
+        setOtpStep('sent');
+        setResendCooldown(RESEND_COOLDOWN);
+        setOtpDigits(['', '', '', '', '', '']);
+        showToast('success', `OTP sent to +91 ${phone.slice(0, 2)}XXXXX${phone.slice(7)}`);
+        setTimeout(() => otpRefs.current[0]?.focus(), 200);
+        setSendingOtp(false);
     };
 
     const handleResendOtp = () => {

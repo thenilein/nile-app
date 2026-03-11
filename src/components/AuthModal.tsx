@@ -88,10 +88,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const handleMSG91Success = async (data: any) => {
     try {
       const rawPhone = phone;
-
-      // MSG91 has already verified the phone number.
-      // Sign in anonymously so Supabase onAuthStateChange fires and
-      // Landing's useEffect can redirect to /menu once user is set.
       const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously({
         options: {
           data: {
@@ -101,12 +97,10 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           }
         }
       });
-
       if (anonError) throw anonError;
 
       const userId = anonData?.user?.id;
       if (userId) {
-        // Upsert profile so the phone is recorded
         await supabase.from('profiles').upsert({
           id: userId,
           phone: rawPhone,
@@ -115,7 +109,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         }, { onConflict: 'id' });
       }
 
-      // Dispatch event to show success animation in OtpVerification
       window.dispatchEvent(new CustomEvent('msg91-success', { detail: data }));
 
       setTimeout(() => {
@@ -124,7 +117,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           window.dispatchEvent(new CustomEvent('open-checkout'));
         }
         handleClose();
-        // Landing's useEffect (watches user from onAuthStateChange) handles /menu redirect
         showToast('success', 'Welcome to Nile Ice Creams! 🎉');
       }, 800);
 
@@ -134,7 +126,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       window.dispatchEvent(new CustomEvent('msg91-failure'));
     }
   };
-
 
   const initMSG91 = (phoneNum: string) => {
     if (!window.initSendOTP) {
@@ -147,11 +138,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       tokenAuth: MSG91_TOKEN_AUTH,
       identifier: `+91${phoneNum}`,
       exposeMethods: true,
-      success: async (data) => {
+      success: async (data: any) => {
         console.log("OTP verified", data);
         await handleMSG91Success(data);
       },
-      failure: (error) => {
+      failure: (error: any) => {
         console.error("OTP failed", error);
         showToast("error", "OTP verification failed. Try again.");
       },
@@ -181,10 +172,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     setLoading(true);
     try {
       initMSG91(phone);
-      showToast(
-        "success",
-        `OTP sent to +91 ${phone.substring(0, 2)}XXX ${phone.substring(7, 10)}`,
-      );
+      showToast("success", `OTP sent to +91 ${phone.substring(0, 2)}XXX ${phone.substring(7, 10)}`);
       setStep("otp");
     } catch {
       setError("Failed to send OTP. Try again.");
