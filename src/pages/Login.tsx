@@ -181,22 +181,7 @@ const Login = () => {
                                 {loading ? 'Sending OTP...' : 'Continue'}
                             </button>
 
-                            <div className="relative my-6">
-                                <div className="absolute inset-0 flex items-center">
-                                    <div className="w-full border-t border-gray-200" />
-                                </div>
-                                <div className="relative flex justify-center text-sm">
-                                    <span className="px-2 bg-white text-gray-500">or</span>
-                                </div>
-                            </div>
 
-                            <button
-                                type="button"
-                                onClick={() => navigate('/')}
-                                className="w-full flex justify-center py-3 px-4 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-800 transition-colors"
-                            >
-                                Continue as guest
-                            </button>
                         </div>
                     </>
                 ) : (

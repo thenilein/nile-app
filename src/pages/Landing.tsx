@@ -31,15 +31,15 @@ const TruckIcon = () => (
 const HeaderSection = () => {
     const [activeTab, setActiveTab] = useState("Delivery");
     const { locationData, isServiceable } = useLocation();
-    const { user, isGuest } = useAuth();
+    const { user } = useAuth();
     const navigate = useNavigate();
 
-    // Auto-redirect if already has a serviceable location and is logged in / guest
+    // Auto-redirect when a serviceable location is set (login no longer required to browse)
     useEffect(() => {
-        if (locationData && isServiceable && (user || isGuest)) {
+        if (locationData && isServiceable) {
             navigate("/menu");
         }
-    }, [locationData, isServiceable, user, isGuest, navigate]);
+    }, [locationData, isServiceable, navigate]);
 
     return (
         <section className="flex flex-col items-center pt-16 pb-16 px-4">

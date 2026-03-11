@@ -68,7 +68,7 @@ const MobileCategoryTabs: React.FC<{
 
 // ─── Main Menu Component ──────────────────────────────────────────────────────
 const Menu: React.FC = () => {
-    const { user, isGuest } = useAuth();
+    const { user } = useAuth();
     const { locationData } = useLocation();
     const navigate = useNavigate();
 
@@ -85,7 +85,7 @@ const Menu: React.FC = () => {
     const [vegOnly, setVegOnly] = useState(false);
     const [popularOnly, setPopularOnly] = useState(false);
 
-    // Checkout Drawer State
+    // Checkout drawer state
     const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
     // Section refs for scroll-spy
@@ -364,7 +364,7 @@ const Menu: React.FC = () => {
                 </div>
             </motion.div>
 
-            {/* Overlay Drawer */}
+            {/* Checkout Drawer (handles OTP inline for unauthenticated users) */}
             <CheckoutDrawer isOpen={isCheckoutOpen} onClose={() => setIsCheckoutOpen(false)} />
         </>
     );

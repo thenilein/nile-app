@@ -28,12 +28,7 @@ import { supabase } from "./lib/supabase";
 
 // ─── Route Guards ──────────────────────────────────────────────────────────────
 
-const MenuRoute = ({ children }: { children: React.ReactNode }) => {
-    const { user, isGuest, isLoading } = useAuth();
-    if (isLoading) return <div className="flex-1 flex justify-center items-center h-screen">Loading...</div>;
-    if (!user && !isGuest) return <Navigate to="/" replace />;
-    return <>{children}</>;
-};
+
 
 const AdminRoute = ({ children }: { children: React.ReactNode }) => {
     const { user, isLoading } = useAuth();
@@ -71,10 +66,10 @@ const AppRoutes = () => {
             <Routes>
                 {/* Customer routes */}
                 <Route path="/" element={<Landing />} />
-                <Route path="/menu" element={<MenuRoute><Menu /></MenuRoute>} />
+                <Route path="/menu" element={<Menu />} />
                 <Route path="/cart" element={<Navigate to="/menu" replace />} />
                 <Route path="/checkout" element={<Navigate to="/menu" replace />} />
-                <Route path="/order-success" element={<MenuRoute><OrderSuccess /></MenuRoute>} />
+                <Route path="/order-success" element={<OrderSuccess />} />
 
                 {/* Admin auth */}
                 <Route path="/admin/login" element={<AdminLogin />} />

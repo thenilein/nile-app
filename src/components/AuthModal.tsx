@@ -4,7 +4,6 @@ import { supabase } from "../lib/supabase";
 import { AlertCircle, X, CheckCircle2 } from "lucide-react";
 import OtpVerification from "../pages/OtpVerification";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
 
 const MSG91_WIDGET_ID = "346869635532313534353235";
 const MSG91_TOKEN_AUTH = "427916TifOeIbAN69b05c02P1";
@@ -31,7 +30,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const sendOtpRef = useRef<any>(null);
 
   const navigate = useNavigate();
-  const { continueAsGuest } = useAuth();
 
   if (!isOpen) return null;
 
@@ -90,79 +88,53 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const handleMSG91Success = async (data: any) => {
     try {
       const rawPhone = phone;
-      const fullPhone = "+91" + rawPhone;
 
-      // FAKE OTP FLOW equivalent login logic that was in OtpVerification
-      const dummyEmail = `${rawPhone}@nileicecreams.com`;
-      const dummyPassword = `nile_pwd_${rawPhone}`;
-
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: dummyEmail,
-        password: dummyPassword,
+      // MSG91 has already verified the phone number.
+      // Sign in anonymously so Supabase onAuthStateChange fires and
+      // Landing's useEffect can redirect to /menu once user is set.
+      const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously({
+        options: {
+          data: {
+            phone: rawPhone,
+            full_phone: `+91${rawPhone}`,
+            verified_via: 'msg91',
+          }
+        }
       });
 
-      if (
-        signInError &&
-        signInError.message.includes("Invalid login credentials")
-      ) {
-        // New user - create account via RPC
-        const { error: rpcError } = await supabase.rpc("register_dummy_user", {
-          p_email: dummyEmail,
-          p_password: dummyPassword,
-          p_phone: fullPhone,
-        });
+      if (anonError) throw anonError;
 
-        if (rpcError) throw rpcError;
-
-        // Now that they are registered via RPC, log them in
-        const { error: secondSignInError } =
-          await supabase.auth.signInWithPassword({
-            email: dummyEmail,
-            password: dummyPassword,
-          });
-
-        if (secondSignInError) throw secondSignInError;
-
-        // Ensure profile is created
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("phone", rawPhone)
-          .single();
-
-        if (!profile) {
-          await supabase.from("profiles").insert({
-            phone: rawPhone,
-            role: "customer",
-            created_at: new Date().toISOString(),
-          });
-        }
-      } else if (signInError) {
-        throw signInError;
+      const userId = anonData?.user?.id;
+      if (userId) {
+        // Upsert profile so the phone is recorded
+        await supabase.from('profiles').upsert({
+          id: userId,
+          phone: rawPhone,
+          role: 'customer',
+          created_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
       }
 
       // Dispatch event to show success animation in OtpVerification
-      window.dispatchEvent(new CustomEvent("msg91-success", { detail: data }));
+      window.dispatchEvent(new CustomEvent('msg91-success', { detail: data }));
 
-      // Delay close slightly to let success animation play, then let Landing/
-      // onAuthStateChange handle routing automatically (avoids race with MenuRoute)
       setTimeout(() => {
-        if (localStorage.getItem("pendingCheckout") === "true") {
-          localStorage.removeItem("pendingCheckout");
-          window.dispatchEvent(new CustomEvent("open-checkout"));
+        if (localStorage.getItem('pendingCheckout') === 'true') {
+          localStorage.removeItem('pendingCheckout');
+          window.dispatchEvent(new CustomEvent('open-checkout'));
         }
         handleClose();
-        // Note: no explicit navigate here — Landing's useEffect redirects to /menu
-        // once onAuthStateChange updates the user in AuthContext
-        showToast("success", "Welcome to Nile Ice Creams! 🎉");
+        // Landing's useEffect (watches user from onAuthStateChange) handles /menu redirect
+        showToast('success', 'Welcome to Nile Ice Creams! 🎉');
       }, 800);
 
     } catch (error) {
-      console.error("Login error", error);
-      showToast("error", "Failed to complete login");
-      window.dispatchEvent(new CustomEvent("msg91-failure"));
+      console.error('Login error', error);
+      showToast('error', 'Login failed. Please try again.');
+      window.dispatchEvent(new CustomEvent('msg91-failure'));
     }
   };
+
 
   const initMSG91 = (phoneNum: string) => {
     if (!window.initSendOTP) {
@@ -244,11 +216,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     navigate("/menu");
   };
 
-  const handleGuest = () => {
-    continueAsGuest();
-    handleClose();
-    navigate("/menu");
-  };
+
 
   const maskPhoneNumber = (num: string) => {
     if (num.length > 4) {
@@ -417,7 +385,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                         </div>
                       </div>
 
-                      <div className="mt-auto pt-4 space-y-4">
+                      <div className="mt-auto pt-4">
                         <button
                           type="button"
                           onClick={handleSendOtp}
@@ -434,23 +402,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                           ) : (
                             "Send OTP"
                           )}
-                        </button>
-
-                        <div className="relative">
-                          <div className="absolute inset-0 flex items-center">
-                            <div className="w-full border-t border-gray-100" />
-                          </div>
-                          <div className="relative flex justify-center text-sm">
-                            <span className="px-2 bg-white text-gray-400">or</span>
-                          </div>
-                        </div>
-
-                        <button
-                          onClick={handleGuest}
-                          type="button"
-                          className="w-full flex justify-center items-center py-3 px-4 rounded-xl text-[14px] font-medium text-gray-500 border border-gray-200 hover:bg-gray-50 hover:text-gray-700 transition-all duration-200 active:scale-[0.98]"
-                        >
-                          Continue as guest
                         </button>
                       </div>
                     </div>
