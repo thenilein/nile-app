@@ -1,4 +1,5 @@
-import React from "react";
+import React, { memo } from "react";
+import { motion } from "framer-motion";
 
 interface Category {
     id: string;
@@ -37,10 +38,11 @@ function getCategoryEmoji(name: string): string {
     return "🍦";
 }
 
-const MenuSidebar: React.FC<MenuSidebarProps> = ({ categories, activeCategoryId, onSelect }) => {
+const MenuSidebar: React.FC<MenuSidebarProps> = memo(({ categories, activeCategoryId, onSelect }) => {
     return (
         <aside className="w-52 flex-shrink-0 hidden lg:flex flex-col">
-            <div className="sticky top-4">
+            {/* sticky: stays visible while the center pane scrolls */}
+            <div className="sticky top-[80px]">
                 <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-3 px-3">Menu</p>
                 <nav className="flex flex-col gap-0.5">
                     {categories.map((cat) => {
@@ -48,17 +50,27 @@ const MenuSidebar: React.FC<MenuSidebarProps> = ({ categories, activeCategoryId,
                         return (
                             <button
                                 key={cat.id}
-                                onClick={() => onSelect(cat.id)}
-                                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all text-sm font-medium group ${isActive
-                                        ? "bg-green-800 text-white shadow-sm"
+                                type="button"
+                                onPointerDown={(e) => { e.preventDefault(); onSelect(cat.id); }}
+                                className={`
+                                    relative flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left
+                                    text-sm font-medium w-full cursor-pointer overflow-hidden
+                                    transition-colors duration-200 active:scale-[0.98]
+                                    ${isActive
+                                        ? "text-white"
                                         : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-                                    }`}
+                                    }
+                                `}
                             >
-                                <span className="text-base flex-shrink-0">{getCategoryEmoji(cat.name)}</span>
-                                <span className="line-clamp-1">{cat.name}</span>
                                 {isActive && (
-                                    <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white/70 flex-shrink-0" />
+                                    <motion.div
+                                        layoutId="activeCategorySidebar"
+                                        className="absolute inset-0 bg-green-800 rounded-xl"
+                                        transition={{ type: "spring", bounce: 0.2, duration: 0.4 }}
+                                    />
                                 )}
+                                <span className="relative z-10 text-base flex-shrink-0">{getCategoryEmoji(cat.name)}</span>
+                                <span className="relative z-10 line-clamp-1">{cat.name}</span>
                             </button>
                         );
                     })}
@@ -66,6 +78,6 @@ const MenuSidebar: React.FC<MenuSidebarProps> = ({ categories, activeCategoryId,
             </div>
         </aside>
     );
-};
+});
 
 export default MenuSidebar;

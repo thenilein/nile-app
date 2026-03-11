@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useRef, useEffect } from "react";
 import { Leaf, Star, Flame } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useCart } from "../context/CartContext.tsx";
 
 export interface Product {
@@ -42,19 +43,40 @@ function getEmoji(name: string): string {
     return "🍦";
 }
 
-const MenuItemCard: React.FC<MenuItemCardProps> = ({ product }) => {
+const MenuItemCard: React.FC<MenuItemCardProps> = React.memo(({ product }) => {
     const { items, addToCart, updateQuantity } = useCart();
     const cartItem = items.find((i) => i.product_id === product.id);
     const qty = cartItem?.quantity ?? 0;
 
-    const handleAdd = () => addToCart(product);
-    const handleIncrease = () => updateQuantity(product.id, qty + 1);
-    const handleDecrease = () => updateQuantity(product.id, qty - 1);
+    // Use a ref to never drop rapid taps before the next render cycle pushes the new qty prop
+    const qtyRef = useRef(qty);
+    useEffect(() => {
+        qtyRef.current = qty;
+    }, [qty]);
+
+    const handleAdd = (e: React.PointerEvent) => {
+        e.preventDefault();
+        addToCart(product);
+    };
+
+    const handleIncrease = (e: React.PointerEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        qtyRef.current += 1;
+        updateQuantity(product.id, qtyRef.current);
+    };
+
+    const handleDecrease = (e: React.PointerEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        qtyRef.current -= 1;
+        updateQuantity(product.id, qtyRef.current);
+    };
 
     const unavailable = !product.is_available || !product.is_active;
 
     return (
-        <div className={`bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col overflow-hidden ${unavailable ? "opacity-60" : ""}`}>
+        <div style={{ willChange: 'transform' }} className={`bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col overflow-hidden ${unavailable ? "opacity-60" : ""}`}>
             {/* Image */}
             <div className="relative h-44 bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center overflow-hidden flex-shrink-0">
                 {product.image_url ? (
@@ -62,7 +84,8 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ product }) => {
                         src={product.image_url}
                         alt={product.name}
                         className="w-full h-full object-cover"
-                        loading="lazy"
+                        loading="eager"
+                        decoding="async"
                     />
                 ) : (
                     <span className="text-6xl select-none">{getEmoji(product.name)}</span>
@@ -104,23 +127,36 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ product }) => {
                         <span className="text-xs text-gray-400 font-medium">Out of stock</span>
                     ) : qty === 0 ? (
                         <button
-                            onClick={handleAdd}
-                            className="px-4 py-1.5 bg-white border-2 border-green-700 text-green-700 text-xs font-bold rounded-lg hover:bg-green-700 hover:text-white transition-colors"
+                            onPointerDown={handleAdd}
+                            className="px-4 py-1.5 bg-white border-2 border-green-700 text-green-700 text-xs font-bold rounded-lg hover:bg-green-700 hover:text-white transition-all duration-100 ease-out active:scale-95"
                         >
                             ADD
                         </button>
                     ) : (
                         <div className="flex items-center gap-0 bg-green-700 rounded-lg overflow-hidden">
                             <button
-                                onClick={handleDecrease}
-                                className="w-7 h-7 flex items-center justify-center text-white font-bold text-base hover:bg-green-800 transition-colors"
+                                onPointerDown={handleDecrease}
+                                className="w-7 h-7 flex items-center justify-center text-white font-bold text-base hover:bg-green-800 transition-all duration-100 ease-out active:scale-95 touch-manipulation"
                             >
                                 −
                             </button>
-                            <span className="w-7 text-center text-white text-xs font-bold">{qty}</span>
+                            <div className="w-7 h-7 flex items-center justify-center overflow-hidden perspective-500">
+                                <AnimatePresence mode="popLayout" initial={false}>
+                                    <motion.span
+                                        key={qty}
+                                        initial={{ rotateX: -90, opacity: 0 }}
+                                        animate={{ rotateX: 0, opacity: 1 }}
+                                        exit={{ rotateX: 90, opacity: 0 }}
+                                        transition={{ duration: 0.12 }}
+                                        className="text-center text-white text-xs font-bold flex-shrink-0"
+                                    >
+                                        {qty}
+                                    </motion.span>
+                                </AnimatePresence>
+                            </div>
                             <button
-                                onClick={handleIncrease}
-                                className="w-7 h-7 flex items-center justify-center text-white font-bold text-base hover:bg-green-800 transition-colors"
+                                onPointerDown={handleIncrease}
+                                className="w-7 h-7 flex items-center justify-center text-white font-bold text-base hover:bg-green-800 transition-all duration-100 ease-out active:scale-95 touch-manipulation"
                             >
                                 +
                             </button>
@@ -130,6 +166,6 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ product }) => {
             </div>
         </div>
     );
-};
+});
 
 export default MenuItemCard;

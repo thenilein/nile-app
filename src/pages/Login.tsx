@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Smartphone, AlertCircle } from 'lucide-react';
+import { Smartphone, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import OtpVerification from './OtpVerification';
 
 const MOBILE_LENGTH = 10;
@@ -11,10 +12,16 @@ const Login = () => {
     const [step, setStep] = useState<'mobile' | 'otp'>('mobile');
     const [mobile, setMobile] = useState('');
     const [error, setError] = useState('');
+    const [toastMsg, setToastMsg] = useState<{ type: 'error' | 'success', text: string } | null>(null);
     const [loading, setLoading] = useState(false);
 
     const fullMobile = `+91${mobile}`;
     const isMobileValid = mobile.length === MOBILE_LENGTH;
+
+    const showToast = (type: 'error' | 'success', text: string) => {
+        setToastMsg({ type, text });
+        setTimeout(() => setToastMsg(null), 3000);
+    };
 
     const handleMobileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const value = e.target.value.replace(/\D/g, '').slice(0, MOBILE_LENGTH);
@@ -25,12 +32,19 @@ const Login = () => {
     const sendOtp = async () => {
         setError('');
         setLoading(true);
-        setStep('otp');
         try {
-            const { error: otpError } = await supabase.auth.signInWithOtp({
-                phone: fullMobile,
+            const { data, error: fnError } = await supabase.functions.invoke('send-otp', {
+                body: { phone: mobile }
             });
-            if (otpError) throw otpError;
+
+            if (fnError) throw fnError;
+
+            if (data?.type === 'success') {
+                setStep('otp');
+            } else {
+                const msg = data?.message || 'Failed to send OTP. Please try again.';
+                setError(msg);
+            }
         } catch (err: any) {
             const msg = err?.message || 'Failed to send OTP';
             if (msg.includes('rate limit') || msg.includes('already')) {
@@ -58,7 +72,22 @@ const Login = () => {
     };
 
     return (
-        <div className="flex-1 flex items-center justify-center bg-gray-50 px-4 py-12">
+        <div className="flex-1 flex items-center justify-center bg-gray-50 px-4 py-12 relative">
+            <AnimatePresence>
+                {toastMsg && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -20, scale: 0.9 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                        className={`fixed top-6 left-1/2 -translate-x-1/2 z-[100] px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 max-w-[90vw] ${toastMsg.type === 'error' ? 'bg-red-500 text-white' : 'bg-green-600 text-white'
+                            }`}
+                    >
+                        {toastMsg.type === 'error' ? <AlertCircle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                        <span className="text-sm font-semibold">{toastMsg.text}</span>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
                 {step === 'mobile' ? (
                     <>
@@ -144,6 +173,7 @@ const Login = () => {
                         maskedPhone={`+91 ${mobile}`}
                         onVerified={() => navigate('/')}
                         onBack={handleBackToMobile}
+                        showToast={showToast}
                     />
                 )}
             </div>

@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { MotionConfig } from "framer-motion";
 import Navbar from "./components/Navbar.tsx";
 import Landing from "./pages/Landing.tsx";
 import Menu from "./pages/Menu.tsx";
-import Cart from "./pages/Cart.tsx";
-import Checkout from "./pages/Checkout.tsx";
 import OrderSuccess from "./pages/OrderSuccess.tsx";
 
 // Admin pages
@@ -73,8 +72,8 @@ const AppRoutes = () => {
                 {/* Customer routes */}
                 <Route path="/" element={<Landing />} />
                 <Route path="/menu" element={<MenuRoute><Menu /></MenuRoute>} />
-                <Route path="/cart" element={<MenuRoute><Cart /></MenuRoute>} />
-                <Route path="/checkout" element={<MenuRoute><Checkout /></MenuRoute>} />
+                <Route path="/cart" element={<Navigate to="/menu" replace />} />
+                <Route path="/checkout" element={<Navigate to="/menu" replace />} />
                 <Route path="/order-success" element={<MenuRoute><OrderSuccess /></MenuRoute>} />
 
                 {/* Admin auth */}
@@ -111,15 +110,17 @@ const AppRoutes = () => {
 
 const App = () => {
     return (
-        <AuthProvider>
-            <CartProvider>
-                <LocationProvider>
-                    <Router>
-                        <AppRoutes />
-                    </Router>
-                </LocationProvider>
-            </CartProvider>
-        </AuthProvider>
+        <MotionConfig reducedMotion="user" transition={{ duration: 0.15 }}>
+            <AuthProvider>
+                <CartProvider>
+                    <LocationProvider>
+                        <Router>
+                            <AppRoutes />
+                        </Router>
+                    </LocationProvider>
+                </CartProvider>
+            </AuthProvider>
+        </MotionConfig>
     );
 };
 

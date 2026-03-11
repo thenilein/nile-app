@@ -1,10 +1,8 @@
-import React, { useState } from "react";
-import { Loader2, MapPin, ArrowRight, Edit2 } from "lucide-react";
-import { useLocation } from "../context/LocationContext.tsx";
-import LocationMapPicker from "../components/LocationMapPicker.tsx";
-import AuthModal from "../components/AuthModal.tsx";
-import { useAuth } from "../context/AuthContext.tsx";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import GPSLocationCard from "../components/GPSLocationCard.tsx";
+import { useLocation } from "../context/LocationContext.tsx";
+import { useAuth } from "../context/AuthContext.tsx";
 
 const MapPinIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 mb-4">
@@ -32,26 +30,20 @@ const TruckIcon = () => (
 
 const HeaderSection = () => {
     const [activeTab, setActiveTab] = useState("Delivery");
-    const [authModalOpen, setAuthModalOpen] = useState(false);
-
-    const { locationData, locationError, isLoadingLocation, nearestOutlet, isServiceable, getCurrentLocation, clearLocation } = useLocation();
+    const { locationData, isServiceable } = useLocation();
     const { user, isGuest } = useAuth();
     const navigate = useNavigate();
 
-    const locationSelected = !!locationData && !isLoadingLocation;
-
-    const handleStartOrdering = () => {
-        // Already authenticated or guest — go straight to menu
-        if (user || isGuest) {
+    // Auto-redirect if already has a serviceable location and is logged in / guest
+    useEffect(() => {
+        if (locationData && isServiceable && (user || isGuest)) {
             navigate("/menu");
-        } else {
-            setAuthModalOpen(true);
         }
-    };
+    }, [locationData, isServiceable, user, isGuest, navigate]);
 
     return (
-        <section className="flex flex-col items-center pt-16 pb-12 px-4">
-            <div className="flex gap-8 mb-16 relative">
+        <section className="flex flex-col items-center pt-16 pb-16 px-4">
+            <div className="flex gap-8 mb-12 relative">
                 {["Delivery", "Pickup"].map((tab) => (
                     <button
                         key={tab}
@@ -66,70 +58,15 @@ const HeaderSection = () => {
                 ))}
             </div>
 
-            <div className="text-center max-w-2xl mx-auto w-full">
-                <p className="text-gray-400 font-medium text-lg mb-4">Let's get ordering</p>
-                <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-12 tracking-tight">
+            <div className="text-center max-w-2xl mx-auto w-full mb-10">
+                <p className="text-gray-400 font-medium text-lg mb-3">Let's get ordering</p>
+                <h1 className="text-4xl md:text-5xl font-bold text-gray-800 tracking-tight">
                     Set your delivery location to get started.
                 </h1>
-
-                {/* ── UNIFIED MAP LOCATION PICKER ── */}
-                <div className="mt-8 mb-6 animate-in fade-in slide-in-from-bottom-2 duration-300 w-full flex flex-col items-center">
-                    <LocationMapPicker />
-
-                    {/* Feedback Under Map */}
-                    {locationSelected && (
-                        <div className="w-full max-w-4xl mt-6">
-                            <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-green-50 border border-green-100 rounded-xl px-6 py-5">
-                                <div className="flex flex-col items-center md:items-start text-center md:text-left gap-1">
-                                    <div className="flex items-center gap-2">
-                                        <MapPin className="w-4 h-4 text-green-700 flex-shrink-0" />
-                                        <span className="text-green-900 font-semibold text-[15px]">
-                                            {locationData!.displayName}
-                                        </span>
-                                    </div>
-
-                                    {nearestOutlet && (
-                                        <div className="mt-1 flex items-center gap-3">
-                                            <p className="text-sm font-bold text-green-900">
-                                                Nile Ice Cream {nearestOutlet.name}
-                                            </p>
-                                            <span className="w-1 h-1 bg-green-300 rounded-full"></span>
-                                            <p className="text-sm font-medium text-green-700">
-                                                Distance: {nearestOutlet.distance_km.toFixed(2)} km
-                                            </p>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Order action button or Unserviceable message */}
-                                {isServiceable ? (
-                                    <button
-                                        id="start-ordering-btn"
-                                        onClick={handleStartOrdering}
-                                        className="flex-shrink-0 flex items-center justify-center gap-2 bg-green-800 hover:bg-green-900 text-white font-semibold py-3.5 px-8 rounded-full shadow-md transition-all hover:shadow-lg hover:-translate-y-px w-full md:w-auto"
-                                    >
-                                        Start ordering
-                                        <ArrowRight className="w-4 h-4" />
-                                    </button>
-                                ) : (
-                                    <div className="flex flex-col items-center md:items-end text-center md:text-right text-orange-800">
-                                        <p className="font-semibold text-sm">No outlets near your location yet.</p>
-                                        <p className="text-xs opacity-80 mt-0.5">We currently only deliver within 7km. Check back soon!</p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                </div>
-
-                {/* Error message (shown only when no location and no loading) */}
-                {locationError && !isLoadingLocation && !locationSelected && (
-                    <p className="mt-4 text-sm text-red-600 font-medium">{locationError}</p>
-                )}
             </div>
 
-            {/* Auth Modal */}
-            <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
+            {/* ── GPS LOCATION CARD ── */}
+            <GPSLocationCard />
         </section>
     );
 };

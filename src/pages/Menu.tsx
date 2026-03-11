@@ -10,6 +10,8 @@ import MenuItemCard, { Product } from "../components/MenuItemCard.tsx";
 import CartPanel from "../components/CartPanel.tsx";
 import PromoBanner from "../components/PromoBanner.tsx";
 import MenuSearch from "../components/MenuSearch.tsx";
+import CheckoutDrawer from "../components/CheckoutDrawer.tsx";
+import { motion } from "framer-motion";
 
 interface Category {
     id: string;
@@ -62,28 +64,7 @@ const MobileCategoryTabs: React.FC<{
     );
 };
 
-// ─── Mobile Cart FAB ─────────────────────────────────────────────────────────
-const MobileCartFab: React.FC = () => {
-    const { totalItems, totalPrice } = useCart();
-    const navigate = useNavigate();
-    if (totalItems === 0) return null;
-    return (
-        <div className="xl:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
-            <button
-                onClick={() => navigate("/cart")}
-                className="flex items-center gap-3 bg-green-800 hover:bg-green-900 text-white px-5 py-3 rounded-full shadow-xl transition-all"
-            >
-                <div className="flex items-center gap-2">
-                    <ShoppingBag className="w-4 h-4" />
-                    <span className="w-5 h-5 bg-white text-green-800 text-xs font-bold rounded-full flex items-center justify-center">
-                        {totalItems}
-                    </span>
-                </div>
-                <span className="text-sm font-bold">View Cart · ₹{totalPrice.toFixed(0)}</span>
-            </button>
-        </div>
-    );
-};
+
 
 // ─── Main Menu Component ──────────────────────────────────────────────────────
 const Menu: React.FC = () => {
@@ -104,9 +85,24 @@ const Menu: React.FC = () => {
     const [vegOnly, setVegOnly] = useState(false);
     const [popularOnly, setPopularOnly] = useState(false);
 
+    // Checkout Drawer State
+    const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+
     // Section refs for scroll-spy
     const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
     const scrollContainerRef = useRef<HTMLDivElement>(null);
+    // Prevents IntersectionObserver from overwriting active state right after a click
+    const clickLockRef = useRef(false);
+    const clickLockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Listen for open-checkout events from AuthModal
+    useEffect(() => {
+        const handleOpenCheckout = () => {
+            setIsCheckoutOpen(true);
+        };
+        window.addEventListener('open-checkout', handleOpenCheckout);
+        return () => window.removeEventListener('open-checkout', handleOpenCheckout);
+    }, []);
 
     // ── Fetch data ────────────────────────────────────────────────────────────
     useEffect(() => {
@@ -142,29 +138,51 @@ const Menu: React.FC = () => {
 
     // ── Scroll to section ─────────────────────────────────────────────────────
     const scrollToCategory = useCallback((id: string) => {
+        // 1. Update active state immediately on click
         setActiveCategoryId(id);
+        // 2. Lock the observer so it doesn't override us while smooth-scrolling
+        clickLockRef.current = true;
+        if (clickLockTimerRef.current) clearTimeout(clickLockTimerRef.current);
+        clickLockTimerRef.current = setTimeout(() => {
+            clickLockRef.current = false;
+        }, 1200);
+        // 3. Scroll the section into view
         const el = sectionRefs.current[id];
         if (el) {
             el.scrollIntoView({ behavior: "smooth", block: "start" });
         }
     }, []);
 
-    // ── Scroll-spy ────────────────────────────────────────────────────────────
+    // ── Scroll-spy: IntersectionObserver ─────────────────────────────────────
     useEffect(() => {
+        if (categories.length === 0) return;
         const container = scrollContainerRef.current;
         if (!container) return;
-        const handleScroll = () => {
-            for (const cat of categories) {
-                const el = sectionRefs.current[cat.id];
-                if (!el) continue;
-                const rect = el.getBoundingClientRect();
-                if (rect.top <= 140) {
-                    setActiveCategoryId(cat.id);
-                }
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (clickLockRef.current) return; // ignore while user just clicked
+                entries.forEach((entry) => {
+                    if (entry.isIntersecting) {
+                        // entry.target.id is the category id stored as the data-cat-id attr
+                        const catId = (entry.target as HTMLElement).dataset.catId;
+                        if (catId) setActiveCategoryId(catId);
+                    }
+                });
+            },
+            {
+                root: container,
+                threshold: 0.25,
+                rootMargin: "-60px 0px -50% 0px",
             }
-        };
-        container.addEventListener("scroll", handleScroll, { passive: true });
-        return () => container.removeEventListener("scroll", handleScroll);
+        );
+
+        // Observe all section elements
+        Object.values(sectionRefs.current).forEach((el) => {
+            if (el) observer.observe(el);
+        });
+
+        return () => observer.disconnect();
     }, [categories]);
 
     // ── Filtered products ─────────────────────────────────────────────────────
@@ -185,163 +203,170 @@ const Menu: React.FC = () => {
 
     // ─── Render ───────────────────────────────────────────────────────────────
     return (
-        <div className="flex-1 flex flex-col min-h-0 bg-gray-50">
-            {/* ── Top Bar ── */}
-            <div className="bg-white border-b border-gray-100 px-4 md:px-6 py-3 flex flex-col gap-3">
-                {/* Row 1: Store + Order type */}
-                <div className="flex items-center gap-4 flex-wrap">
-                    <div className="flex-1 min-w-0">
-                        <h1 className="font-bold text-gray-900 text-base leading-tight">Nile Ice Creams</h1>
-                        {locationData && (
-                            <div className="flex items-center gap-1 text-xs text-gray-500 mt-0.5">
-                                <MapPin className="w-3 h-3 text-green-700" />
-                                <span className="truncate">{locationData.displayName}</span>
-                            </div>
-                        )}
+        <>
+            <motion.div
+                animate={{ scale: isCheckoutOpen ? 0.97 : 1, transformOrigin: 'top center', borderRadius: isCheckoutOpen ? '16px' : '0px', overflow: isCheckoutOpen ? 'hidden' : 'visible' }}
+                transition={{ duration: 0.3 }}
+                className="flex-1 flex flex-col min-h-0 bg-gray-50"
+            >
+                {/* ── Top Bar ── */}
+                <div className="bg-white border-b border-gray-100 px-4 md:px-6 py-3 flex flex-col gap-3">
+                    {/* Row 1: Store + Order type */}
+                    <div className="flex items-center gap-4 flex-wrap">
+                        <div className="flex-1 min-w-0">
+                            <h1 className="font-bold text-gray-900 text-base leading-tight">Nile Ice Creams</h1>
+                            {locationData && (
+                                <div className="flex items-center gap-1 text-xs text-gray-500 mt-0.5">
+                                    <MapPin className="w-3 h-3 text-green-700" />
+                                    <span className="truncate">{locationData.displayName}</span>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Delivery / Pickup toggle */}
+                        <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-1 flex-shrink-0">
+                            <button
+                                onClick={() => setOrderType("delivery")}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${orderType === "delivery"
+                                    ? "bg-white text-green-800 shadow-sm"
+                                    : "text-gray-500 hover:text-gray-700"
+                                    }`}
+                            >
+                                <Truck className="w-3.5 h-3.5" />
+                                Delivery
+                            </button>
+                            <button
+                                onClick={() => setOrderType("pickup")}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${orderType === "pickup"
+                                    ? "bg-white text-green-800 shadow-sm"
+                                    : "text-gray-500 hover:text-gray-700"
+                                    }`}
+                            >
+                                <Store className="w-3.5 h-3.5" />
+                                Pickup
+                            </button>
+                        </div>
                     </div>
 
-                    {/* Delivery / Pickup toggle */}
-                    <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-1 flex-shrink-0">
-                        <button
-                            onClick={() => setOrderType("delivery")}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${orderType === "delivery"
-                                ? "bg-white text-green-800 shadow-sm"
-                                : "text-gray-500 hover:text-gray-700"
-                                }`}
-                        >
-                            <Truck className="w-3.5 h-3.5" />
-                            Delivery
-                        </button>
-                        <button
-                            onClick={() => setOrderType("pickup")}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${orderType === "pickup"
-                                ? "bg-white text-green-800 shadow-sm"
-                                : "text-gray-500 hover:text-gray-700"
-                                }`}
-                        >
-                            <Store className="w-3.5 h-3.5" />
-                            Pickup
-                        </button>
-                    </div>
-                </div>
+                    {/* Row 2: Search + Filters */}
+                    <MenuSearch
+                        query={searchQuery}
+                        onQueryChange={setSearchQuery}
+                        vegOnly={vegOnly}
+                        onVegToggle={() => setVegOnly((v) => !v)}
+                        popularOnly={popularOnly}
+                        onPopularToggle={() => setPopularOnly((v) => !v)}
+                    />
 
-                {/* Row 2: Search + Filters */}
-                <MenuSearch
-                    query={searchQuery}
-                    onQueryChange={setSearchQuery}
-                    vegOnly={vegOnly}
-                    onVegToggle={() => setVegOnly((v) => !v)}
-                    popularOnly={popularOnly}
-                    onPopularToggle={() => setPopularOnly((v) => !v)}
-                />
-
-                {/* Row 3: Mobile category tabs */}
-                <MobileCategoryTabs
-                    categories={categories}
-                    activeCategoryId={activeCategoryId}
-                    onSelect={scrollToCategory}
-                />
-            </div>
-
-            {/* ── Main 3-column layout ── */}
-            <div className="flex flex-1 min-h-0 gap-0 px-4 md:px-6 py-4 max-w-[1600px] mx-auto w-full">
-                {/* Left: Category sidebar */}
-                <div className="lg:pr-5">
-                    <MenuSidebar
+                    {/* Row 3: Mobile category tabs */}
+                    <MobileCategoryTabs
                         categories={categories}
                         activeCategoryId={activeCategoryId}
                         onSelect={scrollToCategory}
                     />
                 </div>
 
-                {/* Center: Scrollable menu content */}
-                <div
-                    ref={scrollContainerRef}
-                    className="flex-1 min-w-0 overflow-y-auto space-y-8 pr-0 xl:pr-5"
-                    style={{ maxHeight: "calc(100vh - 180px)" }}
-                >
-                    {loading ? (
-                        <>
-                            {/* Promo skeleton */}
-                            <div className="h-36 rounded-2xl bg-gray-100 animate-pulse" />
-                            {/* Grid skeleton */}
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-4">
-                                {Array.from({ length: 9 }).map((_, i) => <SkeletonCard key={i} />)}
+                {/* ── Main 3-column layout ── */}
+                <div className="flex flex-1 min-h-0 gap-0 px-4 md:px-6 py-4 max-w-[1600px] mx-auto w-full">
+                    {/* Left: Category sidebar */}
+                    <div className="lg:pr-5">
+                        <MenuSidebar
+                            categories={categories}
+                            activeCategoryId={activeCategoryId}
+                            onSelect={scrollToCategory}
+                        />
+                    </div>
+
+                    {/* Center: Scrollable menu content */}
+                    <div
+                        ref={scrollContainerRef}
+                        className="flex-1 min-w-0 overflow-y-auto space-y-8 pr-0 xl:pr-5"
+                        style={{ maxHeight: "calc(100vh - 180px)" }}
+                    >
+                        {loading ? (
+                            <>
+                                {/* Promo skeleton */}
+                                <div className="h-36 rounded-2xl bg-gray-100 animate-pulse" />
+                                {/* Grid skeleton */}
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-4">
+                                    {Array.from({ length: 9 }).map((_, i) => <SkeletonCard key={i} />)}
+                                </div>
+                            </>
+                        ) : error ? (
+                            <div className="flex flex-col items-center justify-center py-20 text-center">
+                                <span className="text-5xl mb-3">😞</span>
+                                <p className="text-gray-700 font-semibold">{error}</p>
                             </div>
-                        </>
-                    ) : error ? (
-                        <div className="flex flex-col items-center justify-center py-20 text-center">
-                            <span className="text-5xl mb-3">😞</span>
-                            <p className="text-gray-700 font-semibold">{error}</p>
-                        </div>
-                    ) : (
-                        <>
-                            {/* Promo Banner */}
-                            <PromoBanner />
+                        ) : (
+                            <>
+                                {/* Promo Banner */}
+                                <PromoBanner />
 
-                            {/* ── Top Items (popular) ── */}
-                            {!searchQuery && !popularOnly && popularProducts.length > 0 && (
-                                <section>
-                                    <div className="flex items-center gap-2 mb-3">
-                                        <span className="text-base">🔥</span>
-                                        <h2 className="text-base font-bold text-gray-900">Top Items</h2>
-                                    </div>
-                                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-4">
-                                        {popularProducts.map((p) => (
-                                            <MenuItemCard key={`top-${p.id}`} product={p} />
-                                        ))}
-                                    </div>
-                                </section>
-                            )}
-
-                            {/* ── Category Sections ── */}
-                            {categories.map((cat) => {
-                                const catProducts = filteredProducts.filter(
-                                    (p) => p.category_id === cat.id
-                                );
-                                if (catProducts.length === 0) return null;
-                                return (
-                                    <section
-                                        key={cat.id}
-                                        ref={(el) => { sectionRefs.current[cat.id] = el; }}
-                                    >
+                                {/* ── Top Items (popular) ── */}
+                                {!searchQuery && !popularOnly && popularProducts.length > 0 && (
+                                    <section>
                                         <div className="flex items-center gap-2 mb-3">
-                                            <h2 className="text-base font-bold text-gray-900">{cat.name}</h2>
-                                            <span className="text-xs text-gray-400 font-medium">
-                                                ({catProducts.length})
-                                            </span>
+                                            <span className="text-base">🔥</span>
+                                            <h2 className="text-base font-bold text-gray-900">Top Items</h2>
                                         </div>
                                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-4">
-                                            {catProducts.map((p) => (
-                                                <MenuItemCard key={p.id} product={p} />
+                                            {popularProducts.map((p) => (
+                                                <MenuItemCard key={`top-${p.id}`} product={p} />
                                             ))}
                                         </div>
                                     </section>
-                                );
-                            })}
+                                )}
 
-                            {/* Empty state after filtering */}
-                            {filteredProducts.length === 0 && (
-                                <div className="flex flex-col items-center justify-center py-20 text-center">
-                                    <span className="text-5xl mb-3">🍦</span>
-                                    <p className="font-semibold text-gray-700 mb-1">No items found</p>
-                                    <p className="text-sm text-gray-400">Try a different search or remove filters</p>
-                                </div>
-                            )}
+                                {/* ── Category Sections ── */}
+                                {categories.map((cat) => {
+                                    const catProducts = filteredProducts.filter(
+                                        (p) => p.category_id === cat.id
+                                    );
+                                    if (catProducts.length === 0) return null;
+                                    return (
+                                        <section
+                                            key={cat.id}
+                                            ref={(el) => { sectionRefs.current[cat.id] = el; }}
+                                            data-cat-id={cat.id}
+                                        >
+                                            <div className="flex items-center gap-2 mb-3">
+                                                <h2 className="text-base font-bold text-gray-900">{cat.name}</h2>
+                                                <span className="text-xs text-gray-400 font-medium">
+                                                    ({catProducts.length})
+                                                </span>
+                                            </div>
+                                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-4">
+                                                {catProducts.map((p) => (
+                                                    <MenuItemCard key={p.id} product={p} />
+                                                ))}
+                                            </div>
+                                        </section>
+                                    );
+                                })}
 
-                            {/* Bottom padding for mobile FAB */}
-                            <div className="h-16 xl:h-0" />
-                        </>
-                    )}
+                                {/* Empty state after filtering */}
+                                {filteredProducts.length === 0 && (
+                                    <div className="flex flex-col items-center justify-center py-20 text-center">
+                                        <span className="text-5xl mb-3">🍦</span>
+                                        <p className="font-semibold text-gray-700 mb-1">No items found</p>
+                                        <p className="text-sm text-gray-400">Try a different search or remove filters</p>
+                                    </div>
+                                )}
+
+                                {/* Bottom padding for mobile FAB */}
+                                <div className="h-16 xl:h-0" />
+                            </>
+                        )}
+                    </div>
+
+                    {/* Right: Cart panel */}
+                    <CartPanel orderType={orderType} onCheckoutClick={() => setIsCheckoutOpen(true)} isCheckoutOpen={isCheckoutOpen} />
                 </div>
+            </motion.div>
 
-                {/* Right: Cart panel */}
-                <CartPanel orderType={orderType} />
-            </div>
-
-            {/* Mobile cart FAB */}
-            <MobileCartFab />
-        </div>
+            {/* Overlay Drawer */}
+            <CheckoutDrawer isOpen={isCheckoutOpen} onClose={() => setIsCheckoutOpen(false)} />
+        </>
     );
 };
 
