@@ -1,12 +1,9 @@
-import React, { useState, useRef } from "react";
+import React, { useState } from "react";
 import { motion, AnimatePresence, Variants } from "framer-motion";
-import { supabase } from "../lib/supabase";
 import { AlertCircle, X, CheckCircle2 } from "lucide-react";
 import OtpVerification from "../pages/OtpVerification";
 import { useNavigate } from "react-router-dom";
-
-const MSG91_WIDGET_ID = import.meta.env.VITE_MSG91_TEMPLATE_ID;
-const MSG91_TOKEN_AUTH = import.meta.env.VITE_MSG91_AUTH_KEY;
+import { MSG91_CAPTCHA_CONTAINER_ID, sendOtp as sendOtpCore, verifyOtp as verifyOtpCore, resendOtp as resendOtpCore } from "../lib/msg91Otp";
 
 type AuthModalProps = {
   isOpen: boolean;
@@ -26,8 +23,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   } | null>(null);
   const [shakeInput, setShakeInput] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  const sendOtpRef = useRef<any>(null);
 
   const navigate = useNavigate();
 
@@ -85,72 +80,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  const handleMSG91Success = async (data: any) => {
-    try {
-      const rawPhone = phone;
-      const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously({
-        options: {
-          data: {
-            phone: rawPhone,
-            full_phone: `+91${rawPhone}`,
-            verified_via: 'msg91',
-          }
-        }
-      });
-      if (anonError) throw anonError;
-
-      const userId = anonData?.user?.id;
-      if (userId) {
-        await supabase.from('profiles').upsert({
-          id: userId,
-          phone: rawPhone,
-          role: 'customer',
-          created_at: new Date().toISOString(),
-        }, { onConflict: 'id' });
-      }
-
-      window.dispatchEvent(new CustomEvent('msg91-success', { detail: data }));
-
-      setTimeout(() => {
-        if (localStorage.getItem('pendingCheckout') === 'true') {
-          localStorage.removeItem('pendingCheckout');
-          window.dispatchEvent(new CustomEvent('open-checkout'));
-        }
-        handleClose();
-        showToast('success', 'Welcome to Nile Ice Creams! 🎉');
-      }, 800);
-
-    } catch (error) {
-      console.error('Login error', error);
-      showToast('error', 'Login failed. Please try again.');
-      window.dispatchEvent(new CustomEvent('msg91-failure'));
-    }
-  };
-
-  const initMSG91 = (phoneNum: string) => {
-    if (!window.initSendOTP) {
-      showToast("error", "OTP service is loading, please try again.");
-      setLoading(false);
-      return;
-    }
-    window.initSendOTP({
-      widgetId: MSG91_WIDGET_ID,
-      tokenAuth: MSG91_TOKEN_AUTH,
-      identifier: `+91${phoneNum}`,
-      exposeMethods: true,
-      numeric: "1",
-      success: async (data: any) => {
-        console.log("OTP verified", data);
-        await handleMSG91Success(data);
-      },
-      failure: (error: any) => {
-        console.error("OTP failed", error);
-        showToast("error", "OTP verification failed. Try again.");
-      },
-    });
-  };
-
-  const handleSendOtp = (e?: React.FormEvent | React.MouseEvent) => {
+  const handleSendOtp = async (e?: React.FormEvent | React.MouseEvent) => {
     if (e) e.preventDefault();
     setError("");
 
@@ -172,9 +102,16 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
     setLoading(true);
     try {
-      initMSG91(phone);
-      showToast("success", `OTP sent to +91 ${phone.substring(0, 2)}XXX ${phone.substring(7, 10)}`);
-      setStep("otp");
+      const ok = await sendOtpCore({
+        phone,
+        showToast,
+      });
+
+      // Only transition to OTP step when MSG91 init/send was triggered.
+      if (ok) {
+        showToast("success", `OTP sent to +91 ${phone.substring(0, 2)}XXX ${phone.substring(7, 10)}`);
+        setStep("otp");
+      }
     } catch {
       setError("Failed to send OTP. Try again.");
       showToast("error", "Failed to send OTP.");
@@ -183,21 +120,22 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  const handleVerifyOtp = (otp: string) => {
-    if (!window.sendOtp) {
-      showToast("error", "OTP session expired. Please request a new OTP.");
-      return;
-    }
-    window.sendOtp.verifyOtp(otp);
+  const handleVerifyOtp = async (otp: string): Promise<boolean> => {
+    return await verifyOtpCore(phone, otp, showToast, () => {
+      // After MSG91 + Supabase success (handled in msg91Otp), close modal and optionally open checkout.
+      setTimeout(() => {
+        if (localStorage.getItem('pendingCheckout') === 'true') {
+          localStorage.removeItem('pendingCheckout');
+          window.dispatchEvent(new CustomEvent('open-checkout'));
+        }
+        handleClose();
+        showToast('success', 'Welcome to Nile Ice Creams! 🎉');
+      }, 800);
+    });
   };
 
-  const handleResendOtp = () => {
-    if (!window.sendOtp) {
-      initMSG91(phone);
-      return;
-    }
-    window.sendOtp.retryOtp();
-    showToast("success", `OTP resent to +91 ${phone}`);
+  const handleResendOtp = async (): Promise<boolean> => {
+    return await resendOtpCore({ phone, showToast });
   };
 
   const handleVerified = () => {
@@ -372,6 +310,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                             </p>
                           )}
                         </div>
+                        <div id={MSG91_CAPTCHA_CONTAINER_ID} className="mt-3 min-h-[78px]" />
                       </div>
 
                       <div className="mt-auto pt-4">

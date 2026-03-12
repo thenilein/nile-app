@@ -3,10 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { Smartphone, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import OtpVerification from './OtpVerification';
+import { MSG91_CAPTCHA_CONTAINER_ID, sendOtp as sendOtpCore, verifyOtp as verifyOtpCore, resendOtp as resendOtpCore } from '../lib/msg91Otp';
 
 const MOBILE_LENGTH = 10;
-const MSG91_WIDGET_ID = import.meta.env.VITE_MSG91_TEMPLATE_ID;
-const MSG91_TOKEN_AUTH = import.meta.env.VITE_MSG91_AUTH_KEY;
 
 const Login = () => {
     const navigate = useNavigate();
@@ -17,6 +16,7 @@ const Login = () => {
     const [loading, setLoading] = useState(false);
 
     const isMobileValid = mobile.length === MOBILE_LENGTH;
+    const isIndianMobileValid = /^[6-9]\d{9}$/.test(mobile);
 
     const showToast = (type: 'error' | 'success', text: string) => {
         setToastMsg({ type, text });
@@ -29,42 +29,26 @@ const Login = () => {
         setError('');
     };
 
-    // ── MSG91 init (called once per OTP send / resend attempt) ──────────────
-    const initMSG91 = (phone: string) => {
-        if (!window.initSendOTP) {
-            showToast('error', 'OTP service is loading, please try again in a moment.');
-            setLoading(false);
+    // ── Send OTP (step 1 → step 2) ──────────────────────────────────────────
+    const sendOtp = async () => {
+        if (!isMobileValid) return;
+        if (!isIndianMobileValid) {
+            setError('Enter a valid 10-digit mobile number starting with 6-9');
+            showToast('error', 'Invalid mobile number');
             return;
         }
-
-        window.initSendOTP({
-            widgetId: MSG91_WIDGET_ID,
-            tokenAuth: MSG91_TOKEN_AUTH,
-            identifier: `+91${phone}`,
-            exposeMethods: true,
-            numeric: "1",
-            success: async (data) => {
-                // MSG91 has verified the OTP — data.message is the access token
-                console.log('OTP verified', data);
-                showToast('success', 'Welcome to Nile Ice Creams! 🎉');
-                navigate('/');
-            },
-            failure: (error) => {
-                console.error('OTP failed', error);
-                showToast('error', 'OTP verification failed. Please try again.');
-            },
-        });
-    };
-
-    // ── Send OTP (step 1 → step 2) ──────────────────────────────────────────
-    const sendOtp = () => {
-        if (!isMobileValid) return;
         setLoading(true);
         setError('');
         try {
-            initMSG91(mobile);
-            setStep('otp');
-            showToast('success', `OTP sent to +91 ${mobile}`);
+            const ok = await sendOtpCore({
+                phone: mobile,
+                showToast,
+            });
+            // Only move to OTP step if initialisation succeeded.
+            if (ok) {
+                setStep('otp');
+                showToast('success', `OTP sent to +91 ${mobile}`);
+            }
         } catch {
             showToast('error', 'Failed to send OTP. Please try again.');
         } finally {
@@ -73,24 +57,16 @@ const Login = () => {
     };
 
     // ── Verify OTP (called from OtpVerification) ────────────────────────────
-    const verifyOtp = (otp: string) => {
-        if (!window.sendOtp) {
-            showToast('error', 'OTP session expired. Please request a new OTP.');
-            return;
-        }
-        // Result comes back via the success/failure callbacks set in initMSG91
-        window.sendOtp.verifyOtp(otp);
+    const verifyOtp = async (otp: string): Promise<boolean> => {
+        return await verifyOtpCore(mobile, otp, showToast, () => {
+            showToast('success', 'Welcome to Nile Ice Creams! 🎉');
+            navigate('/');
+        });
     };
 
     // ── Resend OTP (called from OtpVerification) ────────────────────────────
-    const resendOtp = () => {
-        if (!window.sendOtp) {
-            // Session may have expired — reinitialise
-            initMSG91(mobile);
-            return;
-        }
-        window.sendOtp.retryOtp();
-        showToast('success', `OTP resent to +91 ${mobile}`);
+    const resendOtp = async (): Promise<boolean> => {
+        return await resendOtpCore({ phone: mobile, showToast });
     };
 
     const handleBackToMobile = () => {
@@ -99,7 +75,7 @@ const Login = () => {
     };
 
     return (
-        <div className="flex-1 flex items-center justify-center bg-gray-50 px-4 py-12 relative">
+        <div className="flex-1 flex items-center justify-center bg-gray-50 px-4 py-8 sm:py-12 relative">
             <AnimatePresence>
                 {toastMsg && (
                     <motion.div
@@ -120,7 +96,7 @@ const Login = () => {
                 )}
             </AnimatePresence>
 
-            <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+            <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-gray-100 p-6 sm:p-8">
                 {step === 'mobile' ? (
                     <>
                         <div className="text-center mb-8">
@@ -171,6 +147,7 @@ const Login = () => {
                                         {MOBILE_LENGTH - mobile.length} digits remaining
                                     </p>
                                 )}
+                                <div id={MSG91_CAPTCHA_CONTAINER_ID} className="mt-3 min-h-[78px]" />
                             </div>
 
                             <button

@@ -4,12 +4,11 @@ import { X, MapPin, Truck, Store, Banknote, CreditCard, Wallet, Smartphone, Shie
 import { useNavigate } from 'react-router-dom';
 import confetti from 'canvas-confetti';
 import { supabase } from '../lib/supabase';
+import { MSG91_CAPTCHA_CONTAINER_ID, sendOtp as sendOtpCore, verifyOtp as verifyOtpCore, resendOtp as resendOtpCore } from '../lib/msg91Otp';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { useLocation } from '../context/LocationContext';
 
-const MSG91_WIDGET_ID = import.meta.env.VITE_MSG91_TEMPLATE_ID;
-const MSG91_TOKEN_AUTH = import.meta.env.VITE_MSG91_AUTH_KEY;
 const OTP_LENGTH = 6;
 const RESEND_COOLDOWN = 30;
 
@@ -176,73 +175,33 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
         setPhoneError('');
     };
 
-    // ── MSG91 OTP flow ────────────────────────────────────────────────
-    const initMSG91 = (phoneNum: string) => {
-        if (!window.initSendOTP) {
-            showToast('error', 'OTP service is loading, please try again.');
-            setSendingOtp(false);
-            return;
-        }
-        window.initSendOTP({
-            widgetId: MSG91_WIDGET_ID,
-            tokenAuth: MSG91_TOKEN_AUTH,
-            identifier: `+91${phoneNum}`,
-            exposeMethods: true,
-            numeric: "1",
-            success: async (data: any) => {
-                try {
-                    const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously({
-                        options: { data: { phone: phoneNum, full_phone: `+91${phoneNum}`, verified_via: 'msg91' } }
-                    });
-                    if (anonError) throw anonError;
-                    const userId = anonData?.user?.id;
-                    if (userId) {
-                        await supabase.from('profiles').upsert(
-                            { id: userId, phone: phoneNum, role: 'customer', created_at: new Date().toISOString() },
-                            { onConflict: 'id' }
-                        );
-                    }
-                    setOtpLoading(false);
-                    setOtpStep('verified');
-                    showToast('success', 'Phone verified! ✅');
-                } catch (err) {
-                    console.error('Login error', err);
-                    setOtpLoading(false);
-                    showToast('error', 'Login failed. Please try again.');
-                    triggerShake();
-                }
-            },
-            failure: () => {
-                setOtpLoading(false);
-                triggerShake();
-                showToast('error', 'Wrong OTP. Try again.');
-            },
-        });
-    };
-
-    const handleSendOtp = () => {
+    // ── OTP flow (shared service) ─────────────────────────────────────
+    const handleSendOtp = async () => {
         if (!isPhoneValid) {
             setPhoneError('Enter a valid 10-digit mobile number starting with 6-9');
             return;
         }
         setSendingOtp(true);
-        initMSG91(phone);
-        setOtpStep('sent');
-        setResendCooldown(RESEND_COOLDOWN);
-        setOtpDigits(['', '', '', '', '', '']);
-        showToast('success', `OTP sent to +91 ${phone.slice(0, 2)}XXXXX${phone.slice(7)}`);
-        setTimeout(() => otpRefs.current[0]?.focus(), 200);
-        setSendingOtp(false);
+        try {
+            const ok = await sendOtpCore({ phone, showToast });
+            if (!ok) return;
+            setOtpStep('sent');
+            setResendCooldown(RESEND_COOLDOWN);
+            setOtpDigits(['', '', '', '', '', '']);
+            showToast('success', `OTP sent to +91 ${phone.slice(0, 2)}XXXXX${phone.slice(7)}`);
+            setTimeout(() => otpRefs.current[0]?.focus(), 200);
+        } finally {
+            setSendingOtp(false);
+        }
     };
 
-    const handleResendOtp = () => {
+    const handleResendOtp = async () => {
         if (resendCooldown > 0) return;
-        if (!window.sendOtp) { initMSG91(phone); }
-        else { window.sendOtp.retryOtp(); }
+        const ok = await resendOtpCore({ phone, showToast });
+        if (!ok) return;
         setOtpDigits(['', '', '', '', '', '']);
         setResendCooldown(RESEND_COOLDOWN);
         otpRefs.current[0]?.focus();
-        showToast('success', 'OTP resent!');
     };
 
     // ── OTP box interactions ───────────────────────────────────────────
@@ -255,15 +214,21 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
         }, 500);
     };
 
-    const submitOtp = (digits: string[]) => {
+    const submitOtp = async (digits: string[]) => {
         const otp = digits.join('');
         if (otp.length !== OTP_LENGTH) return;
-        if (!window.sendOtp) {
-            showToast('error', 'OTP session expired. Please resend.');
-            return;
-        }
         setOtpLoading(true);
-        window.sendOtp.verifyOtp(otp);
+        try {
+            const ok = await verifyOtpCore(phone, otp, showToast, () => {
+                setOtpStep('verified');
+                showToast('success', 'Phone verified! ✅');
+            });
+            if (!ok) {
+                triggerShake();
+            }
+        } finally {
+            setOtpLoading(false);
+        }
     };
 
     const handleOtpChange = (index: number, value: string) => {
@@ -273,7 +238,7 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
         setOtpDigits(newDigits);
         if (value && index < OTP_LENGTH - 1) otpRefs.current[index + 1]?.focus();
         if (newDigits.every(d => d !== '') && newDigits.join('').length === OTP_LENGTH) {
-            submitOtp(newDigits);
+            void submitOtp(newDigits);
         }
     };
 
@@ -292,7 +257,7 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
         setOtpDigits(newDigits);
         const nextIdx = Math.min(pasted.length, OTP_LENGTH - 1);
         otpRefs.current[nextIdx]?.focus();
-        if (pasted.length === OTP_LENGTH) submitOtp(newDigits);
+        if (pasted.length === OTP_LENGTH) void submitOtp(newDigits);
     };
 
     // ── Continue to Step 2 ─────────────────────────────────────────────
@@ -376,7 +341,7 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
                         dragConstraints={{ top: 0, bottom: 0 }}
                         dragElastic={0.05}
                         onDragEnd={(_, info) => { if (info.offset.y > 100 && step !== 3) onClose(); }}
-                        className="fixed bottom-0 left-0 right-0 z-[101] bg-white w-full mx-auto md:max-w-[480px] xl:max-w-[480px] origin-bottom rounded-none md:rounded-t-[24px] shadow-2xl flex flex-col h-[100vh] md:h-auto md:max-h-[90vh]"
+                        className="fixed bottom-0 left-0 right-0 z-[101] bg-white w-full mx-auto md:max-w-[480px] xl:max-w-[480px] origin-bottom rounded-none md:rounded-t-[24px] shadow-2xl flex flex-col h-[100vh] h-[100dvh] md:h-auto md:max-h-[90vh]"
                     >
                         {/* Drag Handle */}
                         {step !== 3 ? (
@@ -478,6 +443,9 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
                                                 )}
                                             </div>
                                             {phoneError && <p className="mt-1 text-xs text-red-500 font-medium">{phoneError}</p>}
+                                            {otpStep === 'idle' && (
+                                                <div id={MSG91_CAPTCHA_CONTAINER_ID} className="mt-3 min-h-[78px]" />
+                                            )}
                                         </div>
 
                                         {/* ── Inline OTP boxes (expand after Send OTP) ── */}
