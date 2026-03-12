@@ -62,12 +62,12 @@ const MobileCategoryTabs: React.FC<{
     }, [activeCategoryId]);
 
     return (
-        <div className="lg:hidden sticky top-[64px] z-30 bg-white border-b border-[#F3F4F6] px-[16px] py-[12px] w-full">
+        <div className="lg:hidden sticky top-[60px] z-30 bg-white border-b border-[#F3F4F6] py-[12px] w-full">
             <style>{`
                 .hide-scroll::-webkit-scrollbar { display: none; }
             `}</style>
             <div
-                className="hide-scroll flex items-center gap-2 overflow-x-auto w-full"
+                className="hide-scroll flex items-center gap-2 overflow-x-auto w-full px-[16px]"
                 style={{ 
                     scrollbarWidth: 'none', 
                     scrollSnapType: 'x mandatory',
@@ -83,10 +83,10 @@ const MobileCategoryTabs: React.FC<{
                             ref={isActive ? activeChipRef : null}
                             onClick={() => onSelect(cat.id)}
                             style={{ scrollSnapAlign: 'start' }}
-                            className={`flex-shrink-0 flex items-center justify-center h-[32px] px-[16px] rounded-full text-[13px] font-[600] transition-all whitespace-nowrap ${
+                            className={`flex-shrink-0 flex items-center justify-center h-[38px] px-[16px] rounded-full text-[13px] font-[700] transition-all whitespace-nowrap ${
                                 isActive
-                                    ? "bg-[#16A34A] text-white shadow-[0_2px_8px_rgba(22,163,74,0.35)]"
-                                    : "bg-[#F3F4F6] text-[#6B7280]"
+                                    ? "bg-[#15803d] text-white shadow-[0_2px_12px_rgba(21,128,61,0.4)]"
+                                    : "bg-white text-gray-500 shadow-sm border border-gray-100"
                             }`}
                         >
                             {emoji && <span className="mr-1.5">{emoji}</span>}
@@ -324,7 +324,7 @@ const Menu: React.FC = () => {
                                 {/* Promo skeleton */}
                                 <div className="h-36 rounded-2xl bg-gray-100 animate-pulse" />
                                 {/* Grid skeleton */}
-                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-3 md:gap-4">
                                     {Array.from({ length: 9 }).map((_, i) => <SkeletonCard key={i} />)}
                                 </div>
                             </>
@@ -343,11 +343,14 @@ const Menu: React.FC = () => {
                                     <section>
                                         <div className="flex items-center gap-2 mb-3">
                                             <span className="text-base">🔥</span>
-                                            <h2 className="text-base font-bold text-gray-900">Top Items</h2>
+                                            <h2 className="text-[18px] font-bold text-gray-900">🔥 Top Items</h2>
                                         </div>
-                                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-4">
+                                        {/* Horizontal scroll on mobile, grid on desktop */}
+                                        <div className="flex md:grid overflow-x-auto md:overflow-visible hide-scroll gap-3 md:gap-4 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 pb-2 md:pb-0 px-4 md:px-0 -mx-4 md:mx-0" style={{ scrollSnapType: 'x mandatory' }}>
                                             {popularProducts.map((p) => (
-                                                <MenuItemCard key={`top-${p.id}`} product={p} />
+                                                <div key={`top-${p.id}`} className="flex-shrink-0 w-[140px] md:w-auto" style={{ scrollSnapAlign: 'start' }}>
+                                                    <MenuItemCard product={p} variant="top" />
+                                                </div>
                                             ))}
                                         </div>
                                     </section>
@@ -371,7 +374,7 @@ const Menu: React.FC = () => {
                                                     ({catProducts.length})
                                                 </span>
                                             </div>
-                                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-4">
+                                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-3 md:gap-4">
                                                 {catProducts.map((p) => (
                                                     <MenuItemCard key={p.id} product={p} />
                                                 ))}

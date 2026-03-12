@@ -544,41 +544,37 @@ const MobileCartDrawer: React.FC<CartPanelProps> = ({ orderType, onCheckoutClick
                         animate={{ y: 0, opacity: 1 }}
                         exit={{ y: 150, opacity: 0 }}
                         transition={{ type: "spring", damping: 20, stiffness: 300 }}
-                        className="xl:hidden fixed z-[60]"
-                        style={{
-                            bottom: 'calc(20px + env(safe-area-inset-bottom))',
-                            left: '16px',
-                            right: '16px'
-                        }}
+                        className="xl:hidden fixed z-[60] bottom-0 left-0 right-0 w-full bg-[#15803d]/95 backdrop-blur-md"
+                        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
                     >
                         <div
                             onClick={() => { if (!open) setOpen(true); }}
-                            className="bg-[#15803d] rounded-[50px] h-[56px] flex items-center justify-between px-2 shadow-[0_8px_32px_rgba(21,128,61,0.4)] cursor-pointer"
+                            className="h-[60px] flex items-center justify-between px-4 cursor-pointer"
                         >
-                            <div className="flex items-center pl-3">
-                                <ShoppingBag className="w-[18px] h-[18px] text-white flex-shrink-0" />
+                            <div className="flex items-center">
+                                <span className="text-xl leading-none -mt-0.5">🛒</span>
                                 <motion.div animate={badgeControls} className="origin-left">
-                                    <span className="text-white text-[14px] font-medium ml-2 inline-block">
+                                    <span className="text-white text-[15px] font-bold ml-2 inline-block">
                                         {totalItems} item{totalItems !== 1 ? 's' : ''}
                                     </span>
                                 </motion.div>
-                                <span className="text-white mx-2 font-bold opacity-70">·</span>
-                                <span className="text-white text-[16px] font-bold">
-                                    ₹{grandTotal.toFixed(0)}
-                                </span>
                             </div>
 
-                            <button
-                                onPointerDown={(e) => {
+                            <div className="w-[1px] h-[30px] bg-white/20 mx-4" />
+
+                            <div 
+                                className="flex items-center justify-end flex-1"
+                                onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
                                     if (open) setOpen(false); // Close cart sheet before checkout
                                     if (onCheckoutClick) onCheckoutClick();
                                 }}
-                                className="bg-white text-[#15803d] h-[40px] px-5 rounded-[50px] font-bold text-sm shadow-sm active:scale-95 transition-transform"
                             >
-                                Checkout →
-                            </button>
+                                <span className="text-white text-[16px] font-bold">
+                                    ₹{grandTotal.toFixed(0)} Checkout →
+                                </span>
+                            </div>
                         </div>
                     </motion.div>
                 )}

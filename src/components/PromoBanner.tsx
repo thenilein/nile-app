@@ -64,7 +64,7 @@ const PromoBanner: React.FC = () => {
     const p = PROMOS[active];
 
     return (
-        <div className={`relative rounded-2xl bg-gradient-to-r ${p.bg} text-white overflow-hidden h-36 flex items-center px-6 transition-all duration-500`}>
+        <div className={`relative rounded-[16px] md:rounded-2xl bg-gradient-to-r ${p.bg} text-white overflow-hidden h-[120px] md:h-36 flex items-center px-4 md:px-6 transition-all duration-500`}>
             {/* Background emoji */}
             <span className="absolute right-6 bottom-0 text-8xl opacity-20 select-none pointer-events-none leading-none">
                 {p.emoji}
@@ -72,11 +72,11 @@ const PromoBanner: React.FC = () => {
 
             {/* Content */}
             <div className="flex-1 z-10">
-                <span className={`inline-block ${p.accent} text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider mb-1.5`}>
+                <span className={`inline-block ${p.accent} text-white text-[9px] md:text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider mb-1 md:mb-1.5`}>
                     {p.label}
                 </span>
-                <h2 className="text-xl font-extrabold leading-tight mb-0.5">{p.headline}</h2>
-                <p className="text-sm text-white/80 max-w-xs">{p.sub}</p>
+                <h2 className="text-lg md:text-xl font-extrabold leading-tight mb-0.5">{p.headline}</h2>
+                <p className="text-[12px] md:text-sm text-white/80 max-w-[240px] md:max-w-xs leading-snug">{p.sub}</p>
             </div>
 
             {/* Nav buttons */}

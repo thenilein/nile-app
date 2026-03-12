@@ -376,47 +376,52 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
                         dragConstraints={{ top: 0, bottom: 0 }}
                         dragElastic={0.05}
                         onDragEnd={(_, info) => { if (info.offset.y > 100 && step !== 3) onClose(); }}
-                        className="fixed bottom-0 left-0 right-0 z-[101] bg-white w-full mx-auto md:max-w-[480px] xl:max-w-[480px] origin-bottom rounded-t-[24px] shadow-2xl flex flex-col"
-                        style={{ maxHeight: '90vh' }}
+                        className="fixed bottom-0 left-0 right-0 z-[101] bg-white w-full mx-auto md:max-w-[480px] xl:max-w-[480px] origin-bottom rounded-none md:rounded-t-[24px] shadow-2xl flex flex-col h-[100vh] md:h-auto md:max-h-[90vh]"
                     >
                         {/* Drag Handle */}
-                        <div className="flex justify-center pt-3 pb-2 flex-shrink-0">
-                            <div className="w-10 h-1 rounded-full bg-gray-300" />
-                        </div>
+                        {step !== 3 ? (
+                            <div className="flex justify-center pt-3 pb-2 flex-shrink-0 bg-[#16a34a] md:bg-white rounded-none md:rounded-t-[24px]">
+                                <div className="w-12 h-1.5 md:w-10 md:h-1 rounded-full bg-white/30 md:bg-gray-300" />
+                            </div>
+                        ) : (
+                            <div className="flex justify-center pt-3 pb-2 flex-shrink-0">
+                                <div className="w-10 h-1 rounded-full bg-gray-300" />
+                            </div>
+                        )}
 
                         {/* Header */}
                         {step !== 3 && (
-                            <div className="px-5 pb-3 flex-shrink-0">
+                            <div className="px-5 pb-3 pt-2 md:pt-0 flex-shrink-0 bg-[#16a34a] md:bg-white text-white md:text-gray-900">
                                 <div className="flex items-center justify-between mb-3">
-                                    <h2 className="text-xl font-bold text-gray-900">Complete Your Order</h2>
-                                    <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-100 transition-colors">
-                                        <X className="w-5 h-5 text-gray-500" />
+                                    <h2 className="text-xl md:text-xl font-bold">Complete Your Order</h2>
+                                    <button onClick={onClose} className="p-1 rounded-full hover:bg-white/20 md:hover:bg-gray-100 transition-colors">
+                                        <X className="w-5 h-5 text-white/80 md:text-gray-500" />
                                     </button>
                                 </div>
                                 <div className="flex items-center gap-2 mb-3">
-                                    <span className="bg-green-100 text-green-800 text-xs font-bold px-3 py-1 rounded-full border border-green-200">
+                                    <span className="bg-white/20 md:bg-green-100 text-white md:text-green-800 text-xs font-bold px-3 py-1.5 md:py-1 rounded-full md:border md:border-green-200">
                                         {totalItems} items · ₹{grandTotal}
                                     </span>
                                 </div>
-                                <div className="h-px bg-green-100 w-full" />
+                                <div className="hidden md:block h-px bg-green-100 w-full" />
                             </div>
                         )}
 
                         {/* Step Indicator */}
                         {step !== 3 && (
-                            <div className="px-5 py-2 flex items-center justify-between flex-shrink-0 text-[11px] font-bold uppercase tracking-wider">
-                                <div className={`flex items-center gap-1.5 ${step === 1 ? 'text-green-700' : 'text-green-700'}`}>
-                                    {step > 1 ? <Check className="w-4 h-4 text-green-600" /> : <div className="w-4 h-4 rounded-full bg-green-600 flex items-center justify-center text-white text-[9px]">1</div>}
+                            <div className="px-5 py-3 md:py-2 flex items-center justify-between flex-shrink-0 text-[11px] font-bold uppercase tracking-wider bg-[#16a34a] md:bg-white shadow-[0_4px_12px_rgba(0,0,0,0.05)] md:shadow-none z-10">
+                                <div className={`flex items-center gap-1.5 ${step === 1 ? 'text-white md:text-green-700' : 'text-white md:text-green-700'}`}>
+                                    {step > 1 ? <Check className="w-4 h-4 text-white md:text-green-600" /> : <div className="w-4 h-4 rounded-full bg-white md:bg-green-600 flex items-center justify-center text-[#16a34a] md:text-white text-[9px]">1</div>}
                                     <span>Delivery</span>
                                 </div>
-                                <div className={`h-px flex-1 mx-2 ${step > 1 ? 'bg-green-500' : 'bg-gray-200'}`} />
-                                <div className={`flex items-center gap-1.5 ${step === 2 ? 'text-green-700' : 'text-gray-400'}`}>
-                                    <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] ${step === 2 ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-500'}`}>2</div>
+                                <div className={`h-px flex-1 mx-2 ${step > 1 ? 'bg-white/50 md:bg-green-500' : 'bg-[#15803d] md:bg-gray-200'}`} />
+                                <div className={`flex items-center gap-1.5 ${step === 2 ? 'text-white md:text-green-700' : 'text-[#14532d] md:text-gray-400'}`}>
+                                    <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] ${step === 2 ? 'bg-white text-[#16a34a] md:bg-green-600 md:text-white' : 'bg-[#15803d] text-white/50 md:bg-gray-200 md:text-gray-500'}`}>2</div>
                                     <span>Payment</span>
                                 </div>
-                                <div className="h-px flex-1 mx-2 bg-gray-200" />
-                                <div className="flex items-center gap-1.5 text-gray-400">
-                                    <div className="w-4 h-4 rounded-full bg-gray-200 flex items-center justify-center text-[9px] text-gray-500">3</div>
+                                <div className="h-px flex-1 mx-2 bg-[#15803d] md:bg-gray-200" />
+                                <div className="flex items-center gap-1.5 text-[#14532d] md:text-gray-400">
+                                    <div className="w-4 h-4 rounded-full bg-[#15803d] md:bg-gray-200 flex items-center justify-center text-[9px] text-white/50 md:text-gray-500">3</div>
                                     <span>Confirm</span>
                                 </div>
                             </div>
@@ -448,7 +453,7 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
                                             </label>
                                             <div className="flex items-center gap-2">
                                                 <div className={`flex-1 flex items-center rounded-xl border overflow-hidden transition-all ${phoneError ? 'border-red-400' : otpStep === 'verified' ? 'border-green-500' : 'border-gray-200 focus-within:border-green-500'}`}>
-                                                    <span className="px-3 py-3 text-gray-500 text-sm font-medium border-r border-gray-200 bg-gray-50 select-none flex-shrink-0">+91</span>
+                                                    <span className="px-3 md:px-3 h-[52px] md:h-auto flex items-center text-gray-500 text-[16px] md:text-sm font-medium border-r border-gray-200 bg-gray-50 select-none flex-shrink-0">+91</span>
                                                     <input
                                                         type="tel"
                                                         inputMode="numeric"
@@ -456,7 +461,7 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
                                                         onChange={handlePhoneChange}
                                                         disabled={otpStep === 'verified' || otpStep === 'sent'}
                                                         placeholder="9876543210"
-                                                        className="flex-1 bg-transparent py-3 pl-3 pr-3 text-sm focus:outline-none disabled:text-gray-500"
+                                                        className="flex-1 bg-transparent h-[52px] md:h-auto py-3 pl-3 pr-3 text-[16px] md:text-sm focus:outline-none disabled:text-gray-500"
                                                     />
                                                     {otpStep === 'verified' && (
                                                         <CheckCircle2 className="w-5 h-5 text-green-500 mr-3 flex-shrink-0" />
@@ -466,7 +471,7 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
                                                     <button
                                                         onClick={handleSendOtp}
                                                         disabled={!isPhoneValid || sendingOtp}
-                                                        className="flex-shrink-0 px-4 py-3 rounded-xl text-sm font-bold text-white bg-green-600 hover:bg-green-700 disabled:bg-gray-200 disabled:text-gray-400 transition-colors"
+                                                        className="flex-shrink-0 px-4 h-[52px] md:h-auto md:py-3 rounded-xl text-[16px] md:text-sm font-bold text-white bg-green-600 hover:bg-green-700 disabled:bg-gray-200 disabled:text-gray-400 transition-colors"
                                                     >
                                                         {sendingOtp ? '...' : 'Send OTP'}
                                                     </button>
@@ -512,7 +517,7 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
                                                                         onKeyDown={e => handleOtpKeyDown(index, e)}
                                                                         animate={isFilled && !otpShake ? { scale: [1, 1.08, 1] } : { scale: 1 }}
                                                                         transition={{ duration: 0.12 }}
-                                                                        className={`w-[44px] h-[52px] text-center text-[22px] font-semibold rounded-xl outline-none transition-all duration-150 border-[1.5px] ${statusColor} caret-green-600 focus:border-green-500 focus:shadow-[0_0_0_1.5px_rgba(21,128,61,0.2)]`}
+                                                                        className={`w-[52px] h-[60px] md:w-[44px] md:h-[52px] text-center text-[24px] md:text-[22px] font-semibold rounded-xl outline-none transition-all duration-150 border-[1.5px] ${statusColor} caret-green-600 focus:border-green-500 focus:shadow-[0_0_0_1.5px_rgba(21,128,61,0.2)]`}
                                                                     />
                                                                 );
                                                             })}
@@ -552,11 +557,11 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
                                                 >
                                                     {/* Delivery / Pickup toggle */}
                                                     <div className="flex bg-gray-100 p-1 rounded-xl">
-                                                        <button onClick={() => setDeliveryType('delivery')} className={`flex-1 flex justify-center items-center gap-2 py-2.5 rounded-lg text-sm font-bold transition-all ${deliveryType === 'delivery' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
-                                                            <Truck className="w-4 h-4" /> Delivery
+                                                        <button onClick={() => setDeliveryType('delivery')} className={`flex-1 flex justify-center items-center gap-2 h-[48px] md:h-auto md:py-2.5 rounded-lg text-[15px] md:text-sm font-bold transition-all ${deliveryType === 'delivery' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
+                                                            <Truck className="w-4 h-4 md:w-4 md:h-4" /> Delivery
                                                         </button>
-                                                        <button onClick={() => setDeliveryType('pickup')} className={`flex-1 flex justify-center items-center gap-2 py-2.5 rounded-lg text-sm font-bold transition-all ${deliveryType === 'pickup' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
-                                                            <Store className="w-4 h-4" /> Pickup
+                                                        <button onClick={() => setDeliveryType('pickup')} className={`flex-1 flex justify-center items-center gap-2 h-[48px] md:h-auto md:py-2.5 rounded-lg text-[15px] md:text-sm font-bold transition-all ${deliveryType === 'pickup' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
+                                                            <Store className="w-4 h-4 md:w-4 md:h-4" /> Pickup
                                                         </button>
                                                     </div>
 
@@ -579,7 +584,7 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
                                                                         value={houseNo}
                                                                         onChange={e => setHouseNo(e.target.value)}
                                                                         placeholder="e.g. 12B, 2nd Floor"
-                                                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-shadow"
+                                                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 h-[52px] md:h-[48px] text-[16px] md:text-sm focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-shadow"
                                                                     />
                                                                 </div>
 
@@ -614,7 +619,7 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
                                                                                             value={locSearchQuery}
                                                                                             onChange={e => setLocSearchQuery(e.target.value)}
                                                                                             placeholder="Search area or pincode..."
-                                                                                            className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-green-500 transition-colors"
+                                                                                            className="w-full pl-9 pr-3 h-[52px] md:h-[42px] bg-gray-50 border border-gray-200 rounded-lg text-[16px] md:text-sm focus:outline-none focus:border-green-500 transition-colors"
                                                                                         />
                                                                                         {isSearchingLoc && <div className="absolute right-3 top-1/2 -translate-y-1/2"><div className="w-3 h-3 border-2 border-green-500 border-t-transparent rounded-full animate-spin" /></div>}
                                                                                     </div>
@@ -648,7 +653,7 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
                                                                         value={instructions}
                                                                         onChange={e => setInstructions(e.target.value)}
                                                                         placeholder="E.g. Ring the bell, leave at door..."
-                                                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-shadow min-h-[72px] resize-none"
+                                                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[16px] md:text-sm focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-shadow min-h-[80px] md:min-h-[72px] resize-none"
                                                                     />
                                                                 </div>
                                                             </motion.div>
@@ -683,7 +688,7 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
                                         <div className="pt-1 pb-6">
                                             <button
                                                 onClick={handleContinueToStep2}
-                                                className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-green-600/20 transition-all active:scale-[0.98]"
+                                                className="w-full bg-green-600 hover:bg-green-700 text-white font-bold h-[56px] md:h-[50px] rounded-xl text-[16px] md:text-[15px] shadow-lg shadow-green-600/20 transition-all active:scale-[0.98]"
                                             >
                                                 Continue →
                                             </button>
@@ -724,17 +729,17 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
                                                 <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
                                                     <div className="pt-2">
                                                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Enter UPI ID</label>
-                                                        <input type="text" value={upiId} onChange={e => setUpiId(e.target.value)} placeholder="example@upi" className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-shadow" />
+                                                        <input type="text" value={upiId} onChange={e => setUpiId(e.target.value)} placeholder="example@upi" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 h-[52px] md:h-[48px] text-[16px] md:text-sm focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-shadow" />
                                                     </div>
                                                 </motion.div>
                                             )}
                                             {paymentMethod === 'card' && (
                                                 <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
                                                     <div className="pt-2 space-y-3">
-                                                        <input type="text" placeholder="Card Number" className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-shadow" />
+                                                        <input type="text" placeholder="Card Number" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 h-[52px] md:h-[48px] text-[16px] md:text-sm focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-shadow" />
                                                         <div className="flex gap-3">
-                                                            <input type="text" placeholder="MM/YY" className="w-1/2 bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-shadow" />
-                                                            <input type="text" placeholder="CVV" className="w-1/2 bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-shadow" />
+                                                            <input type="text" placeholder="MM/YY" className="w-1/2 bg-gray-50 border border-gray-200 rounded-xl px-4 h-[52px] md:h-[48px] text-[16px] md:text-sm focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-shadow" />
+                                                            <input type="text" placeholder="CVV" className="w-1/2 bg-gray-50 border border-gray-200 rounded-xl px-4 h-[52px] md:h-[48px] text-[16px] md:text-sm focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-shadow" />
                                                         </div>
                                                     </div>
                                                 </motion.div>
@@ -745,7 +750,7 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
                                             <button
                                                 disabled={!paymentMethod || isSubmitting}
                                                 onClick={handlePlaceOrder}
-                                                className={`w-full font-bold py-3.5 rounded-xl transition-all shadow-lg active:scale-[0.98] flex items-center justify-center gap-2 ${!paymentMethod ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none' : 'bg-green-600 hover:bg-green-700 text-white shadow-green-600/20'}`}
+                                                className={`w-full font-bold h-[56px] md:h-[50px] text-[16px] md:text-[15px] rounded-xl transition-all shadow-lg active:scale-[0.98] flex items-center justify-center gap-2 ${!paymentMethod ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none' : 'bg-green-600 hover:bg-green-700 text-white shadow-green-600/20'}`}
                                             >
                                                 {isSubmitting ? (
                                                     <>
@@ -789,10 +794,10 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
                                             {deliveryType === 'delivery' ? 'Estimated delivery: 30-45 mins 🛵' : 'Ready for pickup in 15 mins 🏪'}
                                         </p>
                                         <div className="flex flex-col w-full gap-3">
-                                            <button onClick={() => { onClose(); navigate(`/orders/${orderId}`); }} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-green-600/20 transition-all active:scale-[0.98]">
+                                            <button onClick={() => { onClose(); navigate(`/orders/${orderId}`); }} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold h-[56px] md:h-[50px] text-[16px] md:text-[15px] rounded-xl shadow-lg shadow-green-600/20 transition-all active:scale-[0.98]">
                                                 Track Order
                                             </button>
-                                            <button onClick={() => { onClose(); navigate('/menu'); }} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3.5 rounded-xl transition-all active:scale-[0.98]">
+                                            <button onClick={() => { onClose(); navigate('/menu'); }} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold h-[56px] md:h-[50px] text-[16px] md:text-[15px] rounded-xl transition-all active:scale-[0.98]">
                                                 Continue Shopping
                                             </button>
                                         </div>
