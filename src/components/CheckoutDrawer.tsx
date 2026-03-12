@@ -8,8 +8,8 @@ import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { useLocation } from '../context/LocationContext';
 
-const MSG91_WIDGET_ID = "346869635532313534353235";
-const MSG91_TOKEN_AUTH = "427916TifOeIbAN69b05c02P1";
+const MSG91_WIDGET_ID = import.meta.env.VITE_MSG91_TEMPLATE_ID;
+const MSG91_TOKEN_AUTH = import.meta.env.VITE_MSG91_AUTH_KEY;
 const OTP_LENGTH = 6;
 const RESEND_COOLDOWN = 30;
 

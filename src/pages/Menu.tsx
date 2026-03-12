@@ -37,29 +37,64 @@ const SkeletonCard = () => (
 );
 
 // ─── Mobile Category Tabs ────────────────────────────────────────────────────
+const categoryEmojis: Record<string, string> = {
+    'Scoops': '🍦',
+    'Sundaes': '🍨',
+    'Shakes': '🥤',
+    'Waffles': '🧇',
+    'Specials': '✨',
+    'Burgers': '🍔',
+    'Pizzas': '🍕',
+    'Combos': '🎁',
+};
+
 const MobileCategoryTabs: React.FC<{
     categories: Category[];
     activeCategoryId: string | null;
     onSelect: (id: string) => void;
 }> = ({ categories, activeCategoryId, onSelect }) => {
-    const ref = useRef<HTMLDivElement>(null);
+    const activeChipRef = useRef<HTMLButtonElement>(null);
+
+    useEffect(() => {
+        if (activeChipRef.current) {
+            activeChipRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
+    }, [activeCategoryId]);
+
     return (
-        <div
-            ref={ref}
-            className="lg:hidden flex gap-2 overflow-x-auto scrollbar-hide pb-1"
-        >
-            {categories.map((cat) => (
-                <button
-                    key={cat.id}
-                    onClick={() => onSelect(cat.id)}
-                    className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${activeCategoryId === cat.id
-                        ? "bg-green-800 text-white border-green-800"
-                        : "bg-white text-gray-600 border-gray-200 hover:border-green-400"
-                        }`}
-                >
-                    {cat.name}
-                </button>
-            ))}
+        <div className="lg:hidden sticky top-[64px] z-30 bg-white border-b border-[#F3F4F6] px-[16px] py-[12px] w-full">
+            <style>{`
+                .hide-scroll::-webkit-scrollbar { display: none; }
+            `}</style>
+            <div
+                className="hide-scroll flex items-center gap-2 overflow-x-auto w-full"
+                style={{ 
+                    scrollbarWidth: 'none', 
+                    scrollSnapType: 'x mandatory',
+                    scrollBehavior: 'smooth' 
+                }}
+            >
+                {categories.map((cat) => {
+                    const isActive = activeCategoryId === cat.id;
+                    const emoji = categoryEmojis[cat.name] || '';
+                    return (
+                        <button
+                            key={cat.id}
+                            ref={isActive ? activeChipRef : null}
+                            onClick={() => onSelect(cat.id)}
+                            style={{ scrollSnapAlign: 'start' }}
+                            className={`flex-shrink-0 flex items-center justify-center h-[32px] px-[16px] rounded-full text-[13px] font-[600] transition-all whitespace-nowrap ${
+                                isActive
+                                    ? "bg-[#16A34A] text-white shadow-[0_2px_8px_rgba(22,163,74,0.35)]"
+                                    : "bg-[#F3F4F6] text-[#6B7280]"
+                            }`}
+                        >
+                            {emoji && <span className="mr-1.5">{emoji}</span>}
+                            {cat.name}
+                        </button>
+                    );
+                })}
+            </div>
         </div>
     );
 };
@@ -258,13 +293,14 @@ const Menu: React.FC = () => {
                         onPopularToggle={() => setPopularOnly((v) => !v)}
                     />
 
-                    {/* Row 3: Mobile category tabs */}
-                    <MobileCategoryTabs
-                        categories={categories}
-                        activeCategoryId={activeCategoryId}
-                        onSelect={scrollToCategory}
-                    />
                 </div>
+
+                {/* ── Mobile category tabs ── */}
+                <MobileCategoryTabs
+                    categories={categories}
+                    activeCategoryId={activeCategoryId}
+                    onSelect={scrollToCategory}
+                />
 
                 {/* ── Main 3-column layout ── */}
                 <div className="flex flex-1 min-h-0 gap-0 px-4 md:px-6 py-4 max-w-[1600px] mx-auto w-full">

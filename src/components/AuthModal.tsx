@@ -5,8 +5,8 @@ import { AlertCircle, X, CheckCircle2 } from "lucide-react";
 import OtpVerification from "../pages/OtpVerification";
 import { useNavigate } from "react-router-dom";
 
-const MSG91_WIDGET_ID = "346869635532313534353235";
-const MSG91_TOKEN_AUTH = "427916TifOeIbAN69b05c02P1";
+const MSG91_WIDGET_ID = import.meta.env.VITE_MSG91_TEMPLATE_ID;
+const MSG91_TOKEN_AUTH = import.meta.env.VITE_MSG91_AUTH_KEY;
 
 type AuthModalProps = {
   isOpen: boolean;

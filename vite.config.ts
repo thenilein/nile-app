@@ -6,7 +6,7 @@ export default defineConfig(({ mode }) => {
         base: './',
         plugins: [react()],
         build: {
-            outDir: 'distnetlify',
+            outDir: 'dist',
             sourcemap: mode === 'development' || mode === 'test',
         },
     };
