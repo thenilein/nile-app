@@ -21,7 +21,7 @@ const MenuSearch: React.FC<MenuSearchProps> = ({
     return (
         <div className="flex items-center gap-2 md:gap-3 flex-wrap">
             {/* Search input */}
-            <div className="relative flex-1 min-w-[200px]">
+            <div className="relative flex-1 min-w-0">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <Search className="w-4 h-4 text-gray-400" />
                 </div>

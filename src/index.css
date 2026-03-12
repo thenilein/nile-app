@@ -1,5 +1,21 @@
 @import "tailwindcss";
 
+/* ─── Global Responsive Defaults ──────────────────────────────────────────── */
+
+/* Prevent horizontal overflow / scroll on any screen size */
+html,
+body {
+    overflow-x: hidden;
+    max-width: 100%;
+}
+
+/* Responsive images — scale within their container, never overflow */
+img {
+    max-width: 100%;
+    height: auto;
+    object-fit: cover;
+}
+
 @keyframes shimmer {
     0% {
         transform: translateX(-200%);

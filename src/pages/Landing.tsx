@@ -42,8 +42,8 @@ const HeaderSection = () => {
     }, [locationData, isServiceable, navigate]);
 
     return (
-        <section className="flex flex-col items-center pt-16 pb-16 px-4">
-            <div className="flex gap-8 mb-12 relative">
+        <section className="flex flex-col items-center pt-10 sm:pt-16 pb-10 sm:pb-16 px-4">
+            <div className="flex gap-8 mb-10 sm:mb-12 relative">
                 {["Delivery", "Pickup"].map((tab) => (
                     <button
                         key={tab}
@@ -58,9 +58,9 @@ const HeaderSection = () => {
                 ))}
             </div>
 
-            <div className="text-center max-w-2xl mx-auto w-full mb-10">
-                <p className="text-gray-400 font-medium text-lg mb-3">Let's get ordering</p>
-                <h1 className="text-4xl md:text-5xl font-bold text-gray-800 tracking-tight">
+            <div className="text-center max-w-2xl mx-auto w-full mb-8 sm:mb-10">
+                <p className="text-gray-400 font-medium text-base sm:text-lg mb-3">Let's get ordering</p>
+                <h1 className="text-2xl sm:text-4xl md:text-5xl font-bold text-gray-800 tracking-tight">
                     Set your delivery location to get started.
                 </h1>
             </div>
@@ -73,8 +73,8 @@ const HeaderSection = () => {
 
 const FeaturesSection = () => {
     return (
-        <section className="border-t border-gray-100 py-20 px-4 flex justify-center w-full">
-            <div className="w-full max-w-[1000px] flex justify-between text-center">
+        <section className="border-t border-gray-100 py-12 sm:py-20 px-4 flex justify-center w-full">
+            <div className="w-full max-w-screen-xl flex flex-col sm:flex-row justify-between text-center gap-10 sm:gap-0">
                 <div className="flex flex-col items-center flex-1 px-4">
                     <MapPinIcon />
                     <h3 className="text-[17px] font-semibold text-gray-800 mb-2">Set your location</h3>

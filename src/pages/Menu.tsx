@@ -324,7 +324,7 @@ const Menu: React.FC = () => {
                                 {/* Promo skeleton */}
                                 <div className="h-36 rounded-2xl bg-gray-100 animate-pulse" />
                                 {/* Grid skeleton */}
-                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-3 md:gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                                     {Array.from({ length: 9 }).map((_, i) => <SkeletonCard key={i} />)}
                                 </div>
                             </>
@@ -374,7 +374,7 @@ const Menu: React.FC = () => {
                                                     ({catProducts.length})
                                                 </span>
                                             </div>
-                                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-3 md:gap-4">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                                                 {catProducts.map((p) => (
                                                     <MenuItemCard key={p.id} product={p} />
                                                 ))}
@@ -392,8 +392,8 @@ const Menu: React.FC = () => {
                                     </div>
                                 )}
 
-                                {/* Bottom padding for mobile FAB */}
-                                <div className="h-16 xl:h-0" />
+                                {/* Bottom padding — ensures cart pill (mobile) never overlaps the last card */}
+                                <div className="h-24 xl:h-0" />
                             </>
                         )}
                     </div>

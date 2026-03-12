@@ -75,8 +75,8 @@ const PromoBanner: React.FC = () => {
                 <span className={`inline-block ${p.accent} text-white text-[9px] md:text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider mb-1 md:mb-1.5`}>
                     {p.label}
                 </span>
-                <h2 className="text-lg md:text-xl font-extrabold leading-tight mb-0.5">{p.headline}</h2>
-                <p className="text-[12px] md:text-sm text-white/80 max-w-[240px] md:max-w-xs leading-snug">{p.sub}</p>
+                <h2 className="text-base md:text-xl font-extrabold leading-tight mb-0.5">{p.headline}</h2>
+                <p className="text-[12px] md:text-sm text-white/80 max-w-[160px] sm:max-w-[240px] md:max-w-xs leading-snug">{p.sub}</p>
             </div>
 
             {/* Nav buttons */}
