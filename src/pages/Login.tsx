@@ -29,45 +29,55 @@ const Login = () => {
         setError('');
     };
 
-    // ── MSG91 init (called once per OTP send / resend attempt) ──────────────
-    const initMSG91 = (phone: string) => {
-        if (!window.initSendOTP) {
-            showToast('error', 'OTP service is loading, please try again in a moment.');
-            setLoading(false);
-            return;
-        }
-
-        window.initSendOTP({
-            widgetId: MSG91_WIDGET_ID,
-            tokenAuth: MSG91_TOKEN_AUTH,
-            identifier: `+91${phone}`,
-            exposeMethods: true,
-            numeric: "1",
-            success: async (data) => {
-                // MSG91 has verified the OTP — data.message is the access token
-                console.log('OTP verified', data);
-                showToast('success', 'Welcome to Nile Ice Creams! 🎉');
-                navigate('/');
-            },
-            failure: (error) => {
-                console.error('OTP failed', error);
-                showToast('error', 'OTP verification failed. Please try again.');
-            },
-        });
-    };
+    // ── Debug Check ─────────────────────────────────────────────────────────
+    React.useEffect(() => {
+        const checkWidget = setInterval(() => {
+            if (window.sendOtp) {
+                console.log('sendOtp methods:', Object.keys(window.sendOtp));
+                clearInterval(checkWidget);
+            }
+        }, 500);
+        return () => clearInterval(checkWidget);
+    }, []);
 
     // ── Send OTP (step 1 → step 2) ──────────────────────────────────────────
-    const sendOtp = () => {
+    const sendOtp = async () => {
         if (!isMobileValid) return;
         setLoading(true);
         setError('');
         try {
-            initMSG91(mobile);
-            setStep('otp');
-            showToast('success', `OTP sent to +91 ${mobile}`);
-        } catch {
-            showToast('error', 'Failed to send OTP. Please try again.');
-        } finally {
+            const waitForWidget = () => new Promise<void>((resolve, reject) => {
+                let attempts = 0;
+                const check = setInterval(() => {
+                    attempts++;
+                    if (window.sendOtp) {
+                        clearInterval(check);
+                        resolve();
+                    }
+                    if (attempts > 20) {
+                        clearInterval(check);
+                        reject(new Error('Widget not loaded'));
+                    }
+                }, 200);
+            });
+            await waitForWidget();
+
+            window.sendOtp?.send(
+                '91' + mobile,
+                (data: any) => {
+                    console.log('OTP sent', data);
+                    setStep('otp');
+                    showToast('success', `OTP sent to +91 ${mobile}`);
+                    setLoading(false);
+                },
+                (error: any) => {
+                    console.log('Send failed', error);
+                    showToast('error', 'Failed to send OTP. Please try again.');
+                    setLoading(false);
+                }
+            );
+        } catch (err) {
+            showToast('error', 'OTP service not ready. Please refresh.');
             setLoading(false);
         }
     };
@@ -78,19 +88,31 @@ const Login = () => {
             showToast('error', 'OTP session expired. Please request a new OTP.');
             return;
         }
-        // Result comes back via the success/failure callbacks set in initMSG91
-        window.sendOtp.verifyOtp(otp);
+        
+        window.sendOtp?.verify(
+            otp,
+            async (data: any) => {
+                console.log('OTP verified', data);
+                showToast('success', 'Welcome to Nile Ice Creams! 🎉');
+                navigate('/');
+            },
+            (error: any) => {
+                console.error('OTP failed', error);
+                showToast('error', 'OTP verification failed. Please try again.');
+            }
+        );
     };
 
     // ── Resend OTP (called from OtpVerification) ────────────────────────────
     const resendOtp = () => {
-        if (!window.sendOtp) {
-            // Session may have expired — reinitialise
-            initMSG91(mobile);
-            return;
-        }
-        window.sendOtp.retryOtp();
-        showToast('success', `OTP resent to +91 ${mobile}`);
+        window.sendOtp?.retry(
+            (data: any) => {
+                showToast('success', `OTP resent to +91 ${mobile}`);
+            },
+            (error: any) => {
+                showToast('error', 'Resend failed. Try again.');
+            }
+        );
     };
 
     const handleBackToMobile = () => {
