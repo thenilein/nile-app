@@ -24,9 +24,8 @@ interface MSG91OtpConfig {
 }
 
 interface MSG91SendOtp {
-    send: (mobile: string, success: (data: any) => void, failure: (error: any) => void) => void
-    verify: (otp: string, success: (data: any) => void, failure: (error: any) => void) => void
-    retry: (success: (data: any) => void, failure: (error: any) => void) => void
+    verifyOtp: (otp: string) => void
+    retryOtp: () => void
 }
 
 interface Window {

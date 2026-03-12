@@ -107,17 +107,6 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
         }
     }, [isOpen, userPhone]);
 
-    // Debug check for widget methods
-    useEffect(() => {
-        const checkWidget = setInterval(() => {
-            if (window.sendOtp) {
-                console.log('sendOtp methods:', Object.keys(window.sendOtp))
-                clearInterval(checkWidget)
-            }
-        }, 500)
-        return () => clearInterval(checkWidget)
-    }, [])
-
     // Reset on close
     useEffect(() => {
         if (!isOpen) {
@@ -187,100 +176,29 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
         setPhoneError('');
     };
 
-    // ── Send OTP (step 1 → step 2) ──────────────────────────────────────────
-    const handleSendOtp = async () => {
-        if (!isPhoneValid) {
-            setPhoneError('Enter a valid 10-digit mobile number starting with 6-9');
-            return;
-        }
-        setSendingOtp(true);
-        try {
-            const waitForWidget = () => new Promise<void>((resolve, reject) => {
-                let attempts = 0;
-                const check = setInterval(() => {
-                    attempts++;
-                    if (window.sendOtp) {
-                        clearInterval(check);
-                        resolve();
-                    }
-                    if (attempts > 20) {
-                        clearInterval(check);
-                        reject(new Error('Widget not loaded'));
-                    }
-                }, 200);
-            });
-            await waitForWidget();
-
-            window.sendOtp?.send(
-                '91' + phone,
-                (data: any) => {
-                    console.log('OTP sent', data);
-                    setOtpStep('sent');
-                    setResendCooldown(RESEND_COOLDOWN);
-                    setOtpDigits(['', '', '', '', '', '']);
-                    showToast('success', `OTP sent to +91 ${phone.slice(0, 2)}XXXXX${phone.slice(7)}`);
-                    setTimeout(() => otpRefs.current[0]?.focus(), 200);
-                    setSendingOtp(false);
-                },
-                (error: any) => {
-                    console.log('Send failed', error);
-                    showToast('error', 'Failed to send OTP. Try again.');
-                    setSendingOtp(false);
-                }
-            );
-        } catch (err) {
-            showToast('error', 'OTP service not ready. Please refresh.');
+    // ── MSG91 OTP flow ────────────────────────────────────────────────
+    const initMSG91 = (phoneNum: string) => {
+        if (!window.initSendOTP) {
+            showToast('error', 'OTP service is loading, please try again.');
             setSendingOtp(false);
-        }
-    };
-
-    const handleResendOtp = () => {
-        if (resendCooldown > 0) return;
-        setOtpDigits(['', '', '', '', '', '']);
-        window.sendOtp?.retry(
-            (data: any) => {
-                setResendCooldown(RESEND_COOLDOWN);
-                otpRefs.current[0]?.focus();
-                showToast('success', 'OTP resent!');
-            },
-            (error: any) => {
-                showToast('error', 'Resend failed. Try again.');
-            }
-        );
-    };
-
-    // ── OTP box interactions ───────────────────────────────────────────
-    const triggerShake = () => {
-        setOtpShake(true);
-        setTimeout(() => {
-            setOtpShake(false);
-            setOtpDigits(['', '', '', '', '', '']);
-            otpRefs.current[0]?.focus();
-        }, 500);
-    };
-
-    const submitOtp = async (digits: string[]) => {
-        const otp = digits.join('');
-        if (otp.length !== OTP_LENGTH) return;
-        if (!window.sendOtp) {
-            showToast('error', 'OTP session expired. Please resend.');
             return;
         }
-        setOtpLoading(true);
-        
-        window.sendOtp?.verify(
-            otp,
-            async (data: any) => {
-                console.log('OTP verified', data);
+        window.initSendOTP({
+            widgetId: MSG91_WIDGET_ID,
+            tokenAuth: MSG91_TOKEN_AUTH,
+            identifier: `+91${phoneNum}`,
+            exposeMethods: true,
+            numeric: "1",
+            success: async (data: any) => {
                 try {
                     const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously({
-                        options: { data: { phone, full_phone: `+91${phone}`, verified_via: 'msg91' } }
+                        options: { data: { phone: phoneNum, full_phone: `+91${phoneNum}`, verified_via: 'msg91' } }
                     });
                     if (anonError) throw anonError;
                     const userId = anonData?.user?.id;
                     if (userId) {
                         await supabase.from('profiles').upsert(
-                            { id: userId, phone, role: 'customer', created_at: new Date().toISOString() },
+                            { id: userId, phone: phoneNum, role: 'customer', created_at: new Date().toISOString() },
                             { onConflict: 'id' }
                         );
                     }
@@ -294,13 +212,58 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
                     triggerShake();
                 }
             },
-            (error: any) => {
-                console.log('Verify failed', error);
+            failure: () => {
                 setOtpLoading(false);
                 triggerShake();
                 showToast('error', 'Wrong OTP. Try again.');
-            }
-        );
+            },
+        });
+    };
+
+    const handleSendOtp = () => {
+        if (!isPhoneValid) {
+            setPhoneError('Enter a valid 10-digit mobile number starting with 6-9');
+            return;
+        }
+        setSendingOtp(true);
+        initMSG91(phone);
+        setOtpStep('sent');
+        setResendCooldown(RESEND_COOLDOWN);
+        setOtpDigits(['', '', '', '', '', '']);
+        showToast('success', `OTP sent to +91 ${phone.slice(0, 2)}XXXXX${phone.slice(7)}`);
+        setTimeout(() => otpRefs.current[0]?.focus(), 200);
+        setSendingOtp(false);
+    };
+
+    const handleResendOtp = () => {
+        if (resendCooldown > 0) return;
+        if (!window.sendOtp) { initMSG91(phone); }
+        else { window.sendOtp.retryOtp(); }
+        setOtpDigits(['', '', '', '', '', '']);
+        setResendCooldown(RESEND_COOLDOWN);
+        otpRefs.current[0]?.focus();
+        showToast('success', 'OTP resent!');
+    };
+
+    // ── OTP box interactions ───────────────────────────────────────────
+    const triggerShake = () => {
+        setOtpShake(true);
+        setTimeout(() => {
+            setOtpShake(false);
+            setOtpDigits(['', '', '', '', '', '']);
+            otpRefs.current[0]?.focus();
+        }, 500);
+    };
+
+    const submitOtp = (digits: string[]) => {
+        const otp = digits.join('');
+        if (otp.length !== OTP_LENGTH) return;
+        if (!window.sendOtp) {
+            showToast('error', 'OTP session expired. Please resend.');
+            return;
+        }
+        setOtpLoading(true);
+        window.sendOtp.verifyOtp(otp);
     };
 
     const handleOtpChange = (index: number, value: string) => {
