@@ -138,6 +138,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       tokenAuth: MSG91_TOKEN_AUTH,
       identifier: `+91${phoneNum}`,
       exposeMethods: true,
+      numeric: "1",
       success: async (data: any) => {
         console.log("OTP verified", data);
         await handleMSG91Success(data);

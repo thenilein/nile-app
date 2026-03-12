@@ -188,6 +188,7 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
             tokenAuth: MSG91_TOKEN_AUTH,
             identifier: `+91${phoneNum}`,
             exposeMethods: true,
+            numeric: "1",
             success: async (data: any) => {
                 try {
                     const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously({

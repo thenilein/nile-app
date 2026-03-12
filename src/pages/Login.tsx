@@ -42,6 +42,7 @@ const Login = () => {
             tokenAuth: MSG91_TOKEN_AUTH,
             identifier: `+91${phone}`,
             exposeMethods: true,
+            numeric: "1",
             success: async (data) => {
                 // MSG91 has verified the OTP — data.message is the access token
                 console.log('OTP verified', data);

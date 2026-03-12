@@ -18,6 +18,7 @@ interface MSG91OtpConfig {
     tokenAuth: string
     identifier: string
     exposeMethods?: boolean
+    numeric?: string
     success?: (data: { message: string; [key: string]: unknown }) => void
     failure?: (error: unknown) => void
 }
