@@ -2,11 +2,23 @@
 
 /* ─── Global Responsive Defaults ──────────────────────────────────────────── */
 
-/* Prevent horizontal overflow / scroll on any screen size */
-html,
+/* Prevent horizontal overflow / scroll on any screen size.
+   -webkit-text-size-adjust: 100% prevents iOS Safari from auto-inflating font
+   sizes when the device orientation changes or the page is narrow.              */
+html {
+    overflow-x: hidden;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
 body {
     overflow-x: hidden;
-    max-width: 100%;
+    max-width: 100vw;
+    width: 100%;
+    /* Remove the 300ms tap delay on mobile browsers */
+    touch-action: manipulation;
+    /* Remove iOS tap highlight flash */
+    -webkit-tap-highlight-color: transparent;
 }
 
 /* Ensure app root participates in flex layouts across pages */
@@ -16,6 +28,8 @@ body {
     display: flex;
     flex-direction: column;
     min-width: 0;
+    width: 100%;
+    max-width: 100%;
 }
 
 /* Responsive images — scale within their container, never overflow */
@@ -23,6 +37,17 @@ img {
     max-width: 100%;
     height: auto;
     object-fit: cover;
+}
+
+/* ─── iOS Safe Area Support ─────────────────────────────────────────────────
+   Utility class used for any fixed-bottom bars so they clear the iPhone
+   home-indicator notch area.                                                   */
+.pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
 }
 
 @keyframes shimmer {
