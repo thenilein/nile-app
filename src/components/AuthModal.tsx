@@ -2,8 +2,13 @@ import React, { useState } from "react";
 import { motion, AnimatePresence, Variants } from "framer-motion";
 import { AlertCircle, X, CheckCircle2 } from "lucide-react";
 import OtpVerification from "../pages/OtpVerification";
-import { useNavigate } from "react-router-dom";
-import { MSG91_CAPTCHA_CONTAINER_ID, sendOtp as sendOtpCore, verifyOtp as verifyOtpCore, resendOtp as resendOtpCore } from "../lib/msg91Otp";
+import ProfileCompletionForm from "./ProfileCompletionForm";
+import {
+  completeProfile as completeProfileCore,
+  sendOtp as sendOtpCore,
+  verifyOtp as verifyOtpCore,
+  resendOtp as resendOtpCore
+} from "../lib/msg91Otp";
 
 type AuthModalProps = {
   isOpen: boolean;
@@ -13,7 +18,8 @@ type AuthModalProps = {
 const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   // Form State
   const [phone, setPhone] = useState("");
-  const [step, setStep] = useState<"phone" | "otp">("phone");
+  const [fullName, setFullName] = useState("");
+  const [step, setStep] = useState<"phone" | "otp" | "profile">("phone");
 
   // Status State
   const [error, setError] = useState("");
@@ -23,8 +29,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   } | null>(null);
   const [shakeInput, setShakeInput] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  const navigate = useNavigate();
+  const [profileLoading, setProfileLoading] = useState(false);
 
   if (!isOpen) return null;
 
@@ -37,6 +42,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     setError("");
     setToastMsg(null);
     setPhone("");
+    setFullName("");
     setStep("phone");
   };
 
@@ -107,7 +113,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         showToast,
       });
 
-      // Only transition to OTP step when MSG91 init/send was triggered.
+      // Only transition to OTP after the backend function confirms the send.
       if (ok) {
         showToast("success", `OTP sent to +91 ${phone.substring(0, 2)}XXX ${phone.substring(7, 10)}`);
         setStep("otp");
@@ -121,16 +127,21 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   };
 
   const handleVerifyOtp = async (otp: string): Promise<boolean> => {
-    return await verifyOtpCore(phone, otp, showToast, () => {
-      // After MSG91 + Supabase success (handled in msg91Otp), close modal and optionally open checkout.
-      setTimeout(() => {
-        if (localStorage.getItem('pendingCheckout') === 'true') {
-          localStorage.removeItem('pendingCheckout');
-          window.dispatchEvent(new CustomEvent('open-checkout'));
-        }
-        handleClose();
-        showToast('success', 'Welcome to Nile Ice Creams! 🎉');
-      }, 800);
+    return await verifyOtpCore(phone, otp, showToast, {
+      onVerified: () => {
+        setTimeout(() => {
+          if (localStorage.getItem('pendingCheckout') === 'true') {
+            localStorage.removeItem('pendingCheckout');
+            window.dispatchEvent(new CustomEvent('open-checkout'));
+          }
+          handleClose();
+          showToast('success', 'Welcome back to Nile Ice Creams!');
+        }, 800);
+      },
+      onNeedsProfile: () => {
+        showToast('success', 'Phone verified. Add your name to continue.');
+        setStep("profile");
+      }
     });
   };
 
@@ -138,21 +149,27 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     return await resendOtpCore({ phone, showToast });
   };
 
-  const handleVerified = () => {
-    handleClose();
-    navigate("/menu");
-  };
+  const handleCompleteProfile = async () => {
+    setProfileLoading(true);
+    try {
+      const ok = await completeProfileCore({
+        phone,
+        fullName,
+        showToast,
+      });
 
+      if (!ok) return;
 
+      if (localStorage.getItem('pendingCheckout') === 'true') {
+        localStorage.removeItem('pendingCheckout');
+        window.dispatchEvent(new CustomEvent('open-checkout'));
+      }
 
-  const maskPhoneNumber = (num: string) => {
-    if (num.length > 4) {
-      return (
-        num.substring(0, num.length - 4).replace(/[0-9]/g, "X") +
-        num.substring(num.length - 4)
-      );
+      handleClose();
+      showToast('success', 'Welcome to Nile Ice Creams! 🎉');
+    } finally {
+      setProfileLoading(false);
     }
-    return num;
   };
 
   // Animated space formatter for visual presentation
@@ -310,7 +327,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                             </p>
                           )}
                         </div>
-                        <div id={MSG91_CAPTCHA_CONTAINER_ID} className="mt-3 min-h-[78px]" />
                       </div>
 
                       <div className="mt-auto pt-4">
@@ -334,7 +350,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                       </div>
                     </div>
                   </motion.div>
-                ) : (
+                ) : step === "otp" ? (
                   <motion.div
                     key="otp-step"
                     custom={1}
@@ -355,6 +371,26 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                       onResendOtp={handleResendOtp}
                       onBack={() => setStep("phone")}
                       showToast={showToast}
+                    />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="profile-step"
+                    custom={1}
+                    variants={stepVariants}
+                    initial="enter"
+                    animate="center"
+                    exit="exit"
+                    className="h-full w-full flex items-center"
+                  >
+                    <ProfileCompletionForm
+                      phone={phone}
+                      fullName={fullName}
+                      loading={profileLoading}
+                      onNameChange={setFullName}
+                      onSubmit={handleCompleteProfile}
+                      onBack={() => setStep("otp")}
+                      submitLabel="Create account"
                     />
                   </motion.div>
                 )}

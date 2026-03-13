@@ -1,14 +1,5 @@
 import { supabase } from './supabase';
 
-const MSG91_WIDGET_ID = import.meta.env.VITE_MSG91_WIDGET_ID || '';
-const MSG91_TOKEN_AUTH =
-  import.meta.env.VITE_MSG91_TOKEN_AUTH || import.meta.env.VITE_MSG91_AUTH_KEY || '';
-const USING_AUTH_KEY_FALLBACK =
-  !import.meta.env.VITE_MSG91_TOKEN_AUTH && !!import.meta.env.VITE_MSG91_AUTH_KEY;
-
-export const isMsg91Configured = !!MSG91_WIDGET_ID && !!MSG91_TOKEN_AUTH;
-export const MSG91_CAPTCHA_CONTAINER_ID = 'msg91-captcha-container';
-
 export type ToastFn = (type: 'error' | 'success', text: string) => void;
 
 type SendOtpOptions = {
@@ -21,294 +12,259 @@ type ResendOtpOptions = {
   showToast?: ToastFn;
 };
 
-const SDK_WAIT_MS = 5000;
-const SDK_CALLBACK_TIMEOUT_MS = 12000;
-
-type OtpSession = {
-  phone: string;
-  identifier: string;
-  reqId?: string;
+type OtpFunctionResponse = {
+  success?: boolean;
+  message?: string;
+  error?: string;
+  email?: string;
+  password?: string;
+  requiresProfileCompletion?: boolean;
 };
 
-let activeSession: OtpSession | null = null;
+let activePhone: string | null = null;
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const isValidPhone = (phone: string) => /^[6-9]\d{9}$/.test(phone);
+const isValidOtp = (otp: string) => /^\d{6}$/.test(otp);
 
 const getErrorMessage = (error: unknown, fallback: string): string => {
   if (!error) return fallback;
-  if (typeof error === 'string') return error;
-  if (typeof error === 'object') {
-    const rec = error as Record<string, unknown>;
-    const msg = rec.message ?? rec.error ?? rec.reason ?? rec.description;
-    if (typeof msg === 'string' && msg.trim()) return msg;
+
+  if (typeof error === 'string' && error.trim()) {
+    return error;
   }
+
+  if (typeof error === 'object') {
+    const record = error as Record<string, unknown>;
+    const message =
+      record.message ??
+      record.error ??
+      record.reason ??
+      record.description ??
+      (typeof record.context === 'object' && record.context
+        ? (record.context as Record<string, unknown>).message
+        : undefined);
+
+    if (typeof message === 'string' && message.trim()) {
+      return message;
+    }
+  }
+
   return fallback;
 };
 
-const getReqId = (data: unknown): string | undefined => {
-  if (!data || typeof data !== 'object') return undefined;
-  const record = data as Record<string, unknown>;
-  const value =
-    record.reqId ??
-    record.requestId ??
-    record.request_id ??
-    (typeof record.data === 'object' && record.data
-      ? (record.data as Record<string, unknown>).reqId ??
-        (record.data as Record<string, unknown>).requestId ??
-        (record.data as Record<string, unknown>).request_id
-      : undefined);
-
-  return typeof value === 'string' ? value : undefined;
-};
-
-const ensureScriptLoaded = (showToast?: ToastFn): boolean => {
-  if (!isMsg91Configured) {
-    showToast?.('error', 'OTP is not configured. Add MSG91 credentials in .env and restart.');
-    return false;
+const getFunctionErrorMessage = async (error: unknown, fallback: string): Promise<string> => {
+  const directMessage = getErrorMessage(error, '');
+  if (directMessage && directMessage !== 'Edge Function returned a non-2xx status code') {
+    return directMessage;
   }
 
-  if (USING_AUTH_KEY_FALLBACK) {
-    console.warn(
-      'MSG91 tokenAuth is using VITE_MSG91_AUTH_KEY fallback. Prefer VITE_MSG91_TOKEN_AUTH from OTP widget integration.',
-    );
+  if (!error || typeof error !== 'object') {
+    return fallback;
   }
 
-  if (!window.initSendOTP) {
-    showToast?.('error', 'OTP service script is still loading. Please try again.');
-    return false;
+  const response = (error as { context?: unknown }).context;
+  if (!(response instanceof Response)) {
+    return directMessage || fallback;
   }
 
-  return true;
-};
+  try {
+    const contentType = response.headers.get('content-type') || '';
 
-const hasCaptchaContainer = () =>
-  typeof document !== 'undefined' && !!document.getElementById(MSG91_CAPTCHA_CONTAINER_ID);
-
-const waitForSdkMethods = async (
-  methods: Array<'sendOtp' | 'verifyOtp'>,
-  waitMs = SDK_WAIT_MS,
-): Promise<boolean> => {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < waitMs) {
-    if (methods.every((method) => typeof window[method] === 'function')) {
-      return true;
+    if (contentType.includes('application/json')) {
+      const data = (await response.clone().json()) as Record<string, unknown>;
+      const message = data.message ?? data.error ?? data.reason ?? data.description;
+      if (typeof message === 'string' && message.trim()) {
+        return message;
+      }
     }
-    await sleep(100);
+
+    const text = await response.clone().text();
+    if (text.trim()) {
+      return text;
+    }
+  } catch {
+    // Fall back to the generic message below.
   }
-  return false;
+
+  return directMessage || fallback;
 };
 
-const initSessionForPhone = async (phone: string, showToast?: ToastFn): Promise<boolean> => {
-  if (!ensureScriptLoaded(showToast) || !window.initSendOTP) {
-    return false;
-  }
-
-  window.initSendOTP({
-    widgetId: MSG91_WIDGET_ID,
-    tokenAuth: MSG91_TOKEN_AUTH,
-    identifier: `91${phone}`,
-    exposeMethods: true,
-    captchaRenderId: MSG91_CAPTCHA_CONTAINER_ID,
-    numeric: '1',
-    success: () => {
-      // Intentionally no-op; verifyOtp callback handles success to avoid duplicate UI events.
-    },
-    failure: () => {
-      // Intentionally no-op; verifyOtp callback handles failures to avoid duplicate UI events.
-    },
+const invokeOtpFunction = async (
+  fnName: 'send-otp' | 'resend-otp' | 'verify-otp' | 'complete-profile',
+  payload: Record<string, string>,
+  fallbackMessage: string,
+): Promise<OtpFunctionResponse> => {
+  const { data, error } = await supabase.functions.invoke<OtpFunctionResponse>(fnName, {
+    body: payload,
   });
 
-  const sdkReady = await waitForSdkMethods(['sendOtp']);
-  if (!sdkReady) {
-    showToast?.('error', 'OTP service is unavailable. Check MSG91 widget token and widget id.');
-    return false;
+  if (error) {
+    throw new Error(await getFunctionErrorMessage(error, fallbackMessage));
   }
 
-  activeSession = {
-    phone,
-    identifier: `91${phone}`,
-  };
-  return true;
+  const response = data ?? {};
+
+  if (response.success === false) {
+    throw new Error(response.message || response.error || fallbackMessage);
+  }
+
+  return response;
 };
 
-const runWithTimeout = async (
-  executor: (resolve: (value: boolean) => void) => void,
-  onTimeout: () => void,
-): Promise<boolean> =>
-  await new Promise<boolean>((resolve) => {
-    let settled = false;
-    const timeout = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      onTimeout();
-      resolve(false);
-    }, SDK_CALLBACK_TIMEOUT_MS);
+const signInVerifiedUser = async (phone: string, email?: string, password?: string) => {
+  if (!email || !password) {
+    throw new Error('Verification completed, but login credentials were not returned.');
+  }
 
-    executor((value) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      resolve(value);
-    });
-  });
-
-const saveVerifiedUser = async (phone: string) => {
   const { data: sessionData } = await supabase.auth.getSession();
 
-  let userId = sessionData.session?.user?.id;
-
-  if (!userId) {
-    const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously({
-      options: {
-        data: {
-          phone,
-          full_phone: `+91${phone}`,
-          verified_via: 'msg91',
-        },
-      },
-    });
-    if (anonError) throw anonError;
-    userId = anonData?.user?.id;
+  if (sessionData.session) {
+    await supabase.auth.signOut();
   }
 
-  if (!userId) return;
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
 
-  await supabase.from('profiles').upsert(
-    {
-      id: userId,
+  if (error) {
+    throw error;
+  }
+
+  if (!data.user) {
+    throw new Error('Could not create an authenticated session.');
+  }
+
+  await supabase.auth.updateUser({
+    data: {
       phone,
-      role: 'customer',
-      created_at: new Date().toISOString(),
+      full_phone: `+91${phone}`,
+      verified_via: 'msg91-edge-function',
     },
-    { onConflict: 'id' },
-  );
+  });
+};
+
+export const completeProfile = async ({
+  phone,
+  fullName,
+  showToast,
+}: {
+  phone: string;
+  fullName: string;
+  showToast?: ToastFn;
+}): Promise<boolean> => {
+  const trimmedName = fullName.trim();
+
+  if (!trimmedName) {
+    showToast?.('error', 'Please enter your name.');
+    return false;
+  }
+
+  try {
+    const response = await invokeOtpFunction(
+      'complete-profile',
+      { phone, fullName: trimmedName },
+      'Failed to save your profile. Please try again.',
+    );
+
+    await signInVerifiedUser(phone, response.email, response.password);
+
+    const { error: updateUserError } = await supabase.auth.updateUser({
+      data: {
+        phone,
+        full_phone: `+91${phone}`,
+        full_name: trimmedName,
+        verified_via: 'msg91-edge-function',
+      },
+    });
+
+    if (updateUserError) {
+      throw updateUserError;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Profile completion failed', error);
+    showToast?.('error', getErrorMessage(error, 'Failed to save your profile. Please try again.'));
+    return false;
+  }
 };
 
 export const sendOtp = async ({ phone, showToast }: SendOtpOptions): Promise<boolean> => {
-  if (!hasCaptchaContainer()) {
-    showToast?.('error', 'Captcha container is missing. Please reload the page and try again.');
+  if (!isValidPhone(phone)) {
+    showToast?.('error', 'Enter a valid 10-digit mobile number.');
     return false;
   }
 
-  const sessionReady = await initSessionForPhone(phone, showToast);
-  if (!sessionReady || !window.sendOtp) {
+  try {
+    await invokeOtpFunction('send-otp', { phone }, 'Failed to send OTP. Please try again.');
+    activePhone = phone;
+    return true;
+  } catch (error) {
+    console.error('OTP send failed', error);
+    showToast?.('error', getErrorMessage(error, 'Failed to send OTP. Please try again.'));
     return false;
   }
-
-  return await runWithTimeout(
-    (resolve) => {
-      window.sendOtp?.(
-        `91${phone}`,
-        (data) => {
-          activeSession = {
-            phone,
-            identifier: `91${phone}`,
-            reqId: getReqId(data),
-          };
-          resolve(true);
-        },
-        (error) => {
-          console.error('MSG91 send OTP failed', error);
-          showToast?.('error', getErrorMessage(error, 'Failed to send OTP. Please try again.'));
-          resolve(false);
-        },
-      );
-    },
-    () => {
-      showToast?.('error', 'No response from OTP provider. Please try again.');
-    },
-  );
 };
 
 export const verifyOtp = async (
   phone: string,
   otp: string,
   showToast?: ToastFn,
-  onVerified?: () => void,
+  callbacks?: {
+    onVerified?: () => void;
+    onNeedsProfile?: () => void;
+  },
 ): Promise<boolean> => {
-  if (activeSession?.phone !== phone) {
-    showToast?.('error', 'OTP session not found. Please resend OTP and try again.');
+  if (!isValidPhone(phone)) {
+    showToast?.('error', 'Enter a valid 10-digit mobile number.');
     return false;
   }
 
-  const sessionReady = await waitForSdkMethods(['verifyOtp']);
-  if (!sessionReady || !window.verifyOtp) {
-    showToast?.('error', 'OTP verify service unavailable. Please resend OTP.');
+  if (!isValidOtp(otp)) {
+    showToast?.('error', 'Enter the 6-digit OTP.');
     return false;
   }
 
-  return await runWithTimeout(
-    (resolve) => {
-      window.verifyOtp?.(
-        otp,
-        async () => {
-          try {
-            await saveVerifiedUser(phone);
-            activeSession = null;
-            onVerified?.();
-            resolve(true);
-          } catch (error) {
-            console.error('MSG91 login completion failed', error);
-            showToast?.('error', 'Login failed. Please try again.');
-            resolve(false);
-          }
-        },
-        (error) => {
-          console.error('MSG91 verify OTP failed', error);
-          showToast?.('error', getErrorMessage(error, 'Incorrect or expired OTP. Please try again.'));
-          resolve(false);
-        },
-        activeSession?.phone === phone ? activeSession.reqId : undefined,
-      );
-    },
-    () => {
-      showToast?.('error', 'OTP verification timed out. Please try again.');
-    },
-  );
+  try {
+    const response = await invokeOtpFunction(
+      'verify-otp',
+      { phone, otp },
+      'Incorrect or expired OTP. Please try again.',
+    );
+
+    activePhone = null;
+
+    if (response.requiresProfileCompletion) {
+      callbacks?.onNeedsProfile?.();
+    } else {
+      await signInVerifiedUser(phone, response.email, response.password);
+      callbacks?.onVerified?.();
+    }
+
+    return true;
+  } catch (error) {
+    console.error('OTP verify failed', error);
+    showToast?.('error', getErrorMessage(error, 'Incorrect or expired OTP. Please try again.'));
+    return false;
+  }
 };
 
 export const resendOtp = async ({ phone, showToast }: ResendOtpOptions): Promise<boolean> => {
-  const sessionReady =
-    activeSession?.phone === phone ? await waitForSdkMethods(['sendOtp']) : await initSessionForPhone(phone, showToast);
-
-  if (!sessionReady) {
+  if (!isValidPhone(phone)) {
+    showToast?.('error', 'Enter a valid 10-digit mobile number.');
     return false;
   }
 
-  const retryReady = await waitForSdkMethods(['sendOtp', 'verifyOtp']);
-
-  if (!retryReady || !window.retryOtp) {
-    const ok = await sendOtp({ phone, showToast });
-    if (ok) {
-      showToast?.('success', `OTP resent to +91 ${phone}`);
-    }
-    return ok;
+  try {
+    await invokeOtpFunction('resend-otp', { phone }, 'Failed to resend OTP. Please try again.');
+    activePhone = phone;
+    showToast?.('success', `OTP resent to +91 ${phone}`);
+    return true;
+  } catch (error) {
+    console.error('OTP resend failed', error);
+    showToast?.('error', getErrorMessage(error, 'Failed to resend OTP. Please try again.'));
+    return false;
   }
-
-  return await runWithTimeout(
-    (resolve) => {
-      window.retryOtp?.(
-        null,
-        (data) => {
-          activeSession = {
-            phone,
-            identifier: `91${phone}`,
-            reqId: getReqId(data) || activeSession?.reqId,
-          };
-          showToast?.('success', `OTP resent to +91 ${phone}`);
-          resolve(true);
-        },
-        (error) => {
-          console.error('MSG91 retry OTP failed', error);
-          showToast?.('error', getErrorMessage(error, 'Failed to resend OTP. Please try again.'));
-          resolve(false);
-        },
-        activeSession?.phone === phone ? activeSession.reqId : undefined,
-      );
-    },
-    () => {
-      showToast?.('error', 'OTP resend timed out. Please try again.');
-    },
-  );
 };
 

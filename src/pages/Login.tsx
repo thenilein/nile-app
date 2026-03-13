@@ -3,17 +3,25 @@ import { useNavigate } from 'react-router-dom';
 import { Smartphone, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import OtpVerification from './OtpVerification';
-import { MSG91_CAPTCHA_CONTAINER_ID, sendOtp as sendOtpCore, verifyOtp as verifyOtpCore, resendOtp as resendOtpCore } from '../lib/msg91Otp';
+import ProfileCompletionForm from '../components/ProfileCompletionForm';
+import {
+    completeProfile as completeProfileCore,
+    sendOtp as sendOtpCore,
+    verifyOtp as verifyOtpCore,
+    resendOtp as resendOtpCore
+} from '../lib/msg91Otp';
 
 const MOBILE_LENGTH = 10;
 
 const Login = () => {
     const navigate = useNavigate();
-    const [step, setStep] = useState<'mobile' | 'otp'>('mobile');
+    const [step, setStep] = useState<'mobile' | 'otp' | 'profile'>('mobile');
     const [mobile, setMobile] = useState('');
+    const [fullName, setFullName] = useState('');
     const [error, setError] = useState('');
     const [toastMsg, setToastMsg] = useState<{ type: 'error' | 'success', text: string } | null>(null);
     const [loading, setLoading] = useState(false);
+    const [profileLoading, setProfileLoading] = useState(false);
 
     const isMobileValid = mobile.length === MOBILE_LENGTH;
     const isIndianMobileValid = /^[6-9]\d{9}$/.test(mobile);
@@ -44,7 +52,7 @@ const Login = () => {
                 phone: mobile,
                 showToast,
             });
-            // Only move to OTP step if initialisation succeeded.
+            // Only move to the OTP step when the backend function succeeds.
             if (ok) {
                 setStep('otp');
                 showToast('success', `OTP sent to +91 ${mobile}`);
@@ -58,9 +66,15 @@ const Login = () => {
 
     // ── Verify OTP (called from OtpVerification) ────────────────────────────
     const verifyOtp = async (otp: string): Promise<boolean> => {
-        return await verifyOtpCore(mobile, otp, showToast, () => {
-            showToast('success', 'Welcome to Nile Ice Creams! 🎉');
-            navigate('/');
+        return await verifyOtpCore(mobile, otp, showToast, {
+            onVerified: () => {
+                showToast('success', 'Welcome back to Nile Ice Creams!');
+                navigate('/');
+            },
+            onNeedsProfile: () => {
+                showToast('success', 'Phone verified. Add your name to continue.');
+                setStep('profile');
+            }
         });
     };
 
@@ -72,6 +86,24 @@ const Login = () => {
     const handleBackToMobile = () => {
         setStep('mobile');
         setError('');
+    };
+
+    const handleCompleteProfile = async () => {
+        setProfileLoading(true);
+        try {
+            const ok = await completeProfileCore({
+                phone: mobile,
+                fullName,
+                showToast,
+            });
+
+            if (!ok) return;
+
+            showToast('success', 'Welcome to Nile Ice Creams! 🎉');
+            navigate('/');
+        } finally {
+            setProfileLoading(false);
+        }
     };
 
     return (
@@ -147,7 +179,6 @@ const Login = () => {
                                         {MOBILE_LENGTH - mobile.length} digits remaining
                                     </p>
                                 )}
-                                <div id={MSG91_CAPTCHA_CONTAINER_ID} className="mt-3 min-h-[78px]" />
                             </div>
 
                             <button
@@ -162,13 +193,23 @@ const Login = () => {
 
                         </div>
                     </>
-                ) : (
+                ) : step === 'otp' ? (
                     <OtpVerification
                         maskedPhone={`+91 ${mobile}`}
                         onVerifyOtp={verifyOtp}
                         onResendOtp={resendOtp}
                         onBack={handleBackToMobile}
                         showToast={showToast}
+                    />
+                ) : (
+                    <ProfileCompletionForm
+                        phone={mobile}
+                        fullName={fullName}
+                        loading={profileLoading}
+                        onNameChange={setFullName}
+                        onSubmit={handleCompleteProfile}
+                        onBack={() => setStep('otp')}
+                        submitLabel="Create account"
                     />
                 )}
             </div>

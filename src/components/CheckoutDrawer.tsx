@@ -4,7 +4,13 @@ import { X, MapPin, Truck, Store, Banknote, CreditCard, Wallet, Smartphone, Shie
 import { useNavigate } from 'react-router-dom';
 import confetti from 'canvas-confetti';
 import { supabase } from '../lib/supabase';
-import { MSG91_CAPTCHA_CONTAINER_ID, sendOtp as sendOtpCore, verifyOtp as verifyOtpCore, resendOtp as resendOtpCore } from '../lib/msg91Otp';
+import ProfileCompletionForm from './ProfileCompletionForm';
+import {
+    completeProfile as completeProfileCore,
+    sendOtp as sendOtpCore,
+    verifyOtp as verifyOtpCore,
+    resendOtp as resendOtpCore
+} from '../lib/msg91Otp';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { useLocation } from '../context/LocationContext';
@@ -19,7 +25,7 @@ interface CheckoutDrawerProps {
 
 type DeliveryType = 'delivery' | 'pickup';
 type PaymentMethod = 'cash' | 'upi' | 'card' | 'wallet';
-type OtpStep = 'idle' | 'sent' | 'verified';
+type OtpStep = 'idle' | 'sent' | 'profile' | 'verified';
 
 const FREE_DELIVERY_THRESHOLD = 300;
 const DELIVERY_FEE = 30;
@@ -53,6 +59,7 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
 
     // ── Phone + OTP state ──────────────────────────────────────────────
     const [phone, setPhone] = useState('');
+    const [fullName, setFullName] = useState('');
     const [phoneError, setPhoneError] = useState('');
     const [otpStep, setOtpStep] = useState<OtpStep>('idle');
     const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
@@ -60,6 +67,7 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
     const [otpShake, setOtpShake] = useState(false);
     const [resendCooldown, setResendCooldown] = useState(0);
     const [sendingOtp, setSendingOtp] = useState(false);
+    const [profileLoading, setProfileLoading] = useState(false);
     const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
     // ── Rest of form state ─────────────────────────────────────────────
@@ -123,6 +131,7 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
                 setOtpDigits(['', '', '', '', '', '']);
                 setResendCooldown(0);
                 setPhoneError('');
+                setFullName('');
             }, 300);
         }
     }, [isOpen]);
@@ -219,9 +228,15 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
         if (otp.length !== OTP_LENGTH) return;
         setOtpLoading(true);
         try {
-            const ok = await verifyOtpCore(phone, otp, showToast, () => {
-                setOtpStep('verified');
-                showToast('success', 'Phone verified! ✅');
+            const ok = await verifyOtpCore(phone, otp, showToast, {
+                onVerified: () => {
+                    setOtpStep('verified');
+                    showToast('success', 'Phone verified! ✅');
+                },
+                onNeedsProfile: () => {
+                    setOtpStep('profile');
+                    showToast('success', 'Phone verified. Add your name to continue.');
+                }
             });
             if (!ok) {
                 triggerShake();
@@ -258,6 +273,24 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
         const nextIdx = Math.min(pasted.length, OTP_LENGTH - 1);
         otpRefs.current[nextIdx]?.focus();
         if (pasted.length === OTP_LENGTH) void submitOtp(newDigits);
+    };
+
+    const handleCompleteProfile = async () => {
+        setProfileLoading(true);
+        try {
+            const ok = await completeProfileCore({
+                phone,
+                fullName,
+                showToast,
+            });
+
+            if (!ok) return;
+
+            setOtpStep('verified');
+            showToast('success', 'Profile completed successfully!');
+        } finally {
+            setProfileLoading(false);
+        }
     };
 
     // ── Continue to Step 2 ─────────────────────────────────────────────
@@ -424,7 +457,7 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
                                                         inputMode="numeric"
                                                         value={phone}
                                                         onChange={handlePhoneChange}
-                                                        disabled={otpStep === 'verified' || otpStep === 'sent'}
+                                                        disabled={otpStep === 'verified' || otpStep === 'sent' || otpStep === 'profile'}
                                                         placeholder="9876543210"
                                                         className="flex-1 bg-transparent h-[52px] md:h-auto py-3 pl-3 pr-3 text-[16px] md:text-sm focus:outline-none disabled:text-gray-500"
                                                     />
@@ -443,9 +476,6 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
                                                 )}
                                             </div>
                                             {phoneError && <p className="mt-1 text-xs text-red-500 font-medium">{phoneError}</p>}
-                                            {otpStep === 'idle' && (
-                                                <div id={MSG91_CAPTCHA_CONTAINER_ID} className="mt-3 min-h-[78px]" />
-                                            )}
                                         </div>
 
                                         {/* ── Inline OTP boxes (expand after Send OTP) ── */}
@@ -509,6 +539,27 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
                                                             )}
                                                         </div>
                                                     </div>
+                                                </motion.div>
+                                            )}
+                                        </AnimatePresence>
+
+                                        <AnimatePresence>
+                                            {otpStep === 'profile' && (
+                                                <motion.div
+                                                    initial={{ opacity: 0, height: 0 }}
+                                                    animate={{ opacity: 1, height: 'auto' }}
+                                                    exit={{ opacity: 0, height: 0 }}
+                                                    transition={{ duration: 0.3, ease: 'easeInOut' }}
+                                                    className="overflow-hidden"
+                                                >
+                                                    <ProfileCompletionForm
+                                                        phone={phone}
+                                                        fullName={fullName}
+                                                        loading={profileLoading}
+                                                        onNameChange={setFullName}
+                                                        onSubmit={handleCompleteProfile}
+                                                        submitLabel="Save and continue"
+                                                    />
                                                 </motion.div>
                                             )}
                                         </AnimatePresence>

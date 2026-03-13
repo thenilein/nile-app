@@ -37,20 +37,14 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { phone, otp } = await req.json();
+    const { phone, fullName } = await req.json();
 
     if (typeof phone !== "string" || !/^[6-9]\d{9}$/.test(phone)) {
       return json(400, { success: false, message: "Enter a valid 10-digit mobile number." });
     }
 
-    if (typeof otp !== "string" || !/^\d{6}$/.test(otp)) {
-      return json(400, { success: false, message: "Enter a valid 6-digit OTP." });
-    }
-
-    const authKey = Deno.env.get("MSG91_AUTH_KEY");
-
-    if (!authKey) {
-      return json(500, { success: false, message: "OTP provider is not configured." });
+    if (typeof fullName !== "string" || !fullName.trim()) {
+      return json(400, { success: false, message: "Please enter your name." });
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -61,34 +55,14 @@ Deno.serve(async (req) => {
       return json(500, { success: false, message: "Supabase auth setup is incomplete." });
     }
 
-    const url = new URL("https://control.msg91.com/api/v5/otp/verify");
-    url.search = new URLSearchParams({
-      mobile: `91${phone}`,
-      otp,
-    }).toString();
-
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        authkey: authKey,
-      },
-    });
-
-    const data = await response.json();
-
-    if (!response.ok || data?.type !== "success") {
-      return json(response.ok ? 400 : response.status, {
-        success: false,
-        message: data?.message || "Incorrect or expired OTP.",
-        provider: data,
-      });
-    }
-
     const admin = createClient(supabaseUrl, serviceRoleKey);
+    const trimmedName = fullName.trim();
+    const email = buildSyntheticEmail(phone);
+    const password = await buildPassword(phone, phoneAuthSecret);
 
     const { data: existingProfile, error: profileError } = await admin
       .from("profiles")
-      .select("id, full_name")
+      .select("id")
       .eq("phone", phone)
       .maybeSingle();
 
@@ -96,41 +70,75 @@ Deno.serve(async (req) => {
       return json(500, { success: false, message: profileError.message });
     }
 
-    if (!existingProfile?.id) {
+    if (existingProfile?.id) {
+      const { error: updateProfileError } = await admin
+        .from("profiles")
+        .update({ full_name: trimmedName, role: "user" })
+        .eq("id", existingProfile.id);
+
+      if (updateProfileError) {
+        return json(500, { success: false, message: updateProfileError.message });
+      }
+
+      const { error: updateUserError } = await admin.auth.admin.updateUserById(existingProfile.id, {
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: {
+          phone,
+          full_phone: `+91${phone}`,
+          full_name: trimmedName,
+          verified_via: "msg91-edge-function",
+        },
+      });
+
+      if (updateUserError) {
+        return json(500, { success: false, message: updateUserError.message });
+      }
+
       return json(200, {
         success: true,
-        message: data?.message || "OTP verified successfully.",
-        phone,
-        requiresProfileCompletion: true,
+        message: "Profile completed successfully.",
+        email,
+        password,
       });
     }
 
-    const email = buildSyntheticEmail(phone);
-    const password = await buildPassword(phone, phoneAuthSecret);
-
-    const { error: updateUserError } = await admin.auth.admin.updateUserById(existingProfile.id, {
+    const { data: createdUser, error: createUserError } = await admin.auth.admin.createUser({
       email,
       password,
       email_confirm: true,
       user_metadata: {
         phone,
         full_phone: `+91${phone}`,
-        full_name: existingProfile.full_name ?? null,
+        full_name: trimmedName,
         verified_via: "msg91-edge-function",
       },
     });
 
-    if (updateUserError) {
-      return json(500, { success: false, message: updateUserError.message });
+    if (createUserError || !createdUser.user?.id) {
+      return json(500, {
+        success: false,
+        message: createUserError?.message || "Failed to create user.",
+      });
+    }
+
+    const { error: insertProfileError } = await admin.from("profiles").insert({
+      id: createdUser.user.id,
+      phone,
+      full_name: trimmedName,
+      role: "user",
+    });
+
+    if (insertProfileError) {
+      return json(500, { success: false, message: insertProfileError.message });
     }
 
     return json(200, {
       success: true,
-      message: data?.message || "OTP verified successfully.",
-      phone,
+      message: "Profile completed successfully.",
       email,
       password,
-      requiresProfileCompletion: false,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected server error";
