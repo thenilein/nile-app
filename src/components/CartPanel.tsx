@@ -3,6 +3,7 @@ import { motion, AnimatePresence, useAnimation, useMotionValue, useTransform, an
 import { ShoppingBag, X, ArrowRight, Tag, ChevronDown } from "lucide-react";
 import { useCart } from "../context/CartContext.tsx";
 import { useNavigate } from "react-router-dom";
+import MobileSheet from "./MobileSheet.tsx";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const DELIVERY_FEE = 30;
@@ -346,6 +347,12 @@ const CartPanelInner: React.FC<CartPanelProps & { mobile?: boolean; onClose?: ()
                 maxHeight: mobile ? "none" : "calc(100vh - 5.5rem)",
             }}
         >
+            {/* Drag handle pip — only visible in mobile sheet mode */}
+            {mobile && (
+                <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
+                    <div className="w-12 h-1.5 rounded-full bg-gray-200" />
+                </div>
+            )}
             {/* ── HEADER ── */}
             <div className="flex items-center justify-between px-4 pt-4 pb-3 flex-shrink-0">
                 <div className="flex items-center gap-2.5">
@@ -532,7 +539,7 @@ const MobileCartDrawer: React.FC<CartPanelProps> = ({ orderType, onCheckoutClick
     const deliveryFee = orderType === "delivery" ? (subtotal >= FREE_DELIVERY_THRESHOLD ? 0 : DELIVERY_FEE) : 0;
     const grandTotal = subtotal + gst + deliveryFee;
 
-    const showPill = totalItems > 0 && !isCheckoutOpen;
+    const showPill = totalItems > 0 && !isCheckoutOpen && !open;
 
     return (
         <>
@@ -580,44 +587,17 @@ const MobileCartDrawer: React.FC<CartPanelProps> = ({ orderType, onCheckoutClick
                 )}
             </AnimatePresence>
 
-            {/* Drawer backdrop + panel */}
-            <AnimatePresence>
-                {open && (
-                    <>
-                        <motion.div
-                            key="backdrop"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            onClick={() => setOpen(false)}
-                            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm xl:hidden"
-                        />
-                        <motion.div
-                            key="drawer"
-                            initial={{ y: "100%" }}
-                            animate={{ y: 0 }}
-                            exit={{ y: "100%" }}
-                            transition={{ type: "spring", stiffness: 320, damping: 35 }}
-                            drag="y"
-                            dragConstraints={{ top: 0 }}
-                            dragElastic={0.1}
-                            onDragEnd={(_, info) => {
-                                if (info.offset.y > 100) setOpen(false);
-                            }}
-                            className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-[24px] xl:hidden flex flex-col overflow-hidden shadow-[0_-8px_32px_rgba(0,0,0,0.1)]"
-                            style={{ touchAction: "none", height: "75vh" }}
-                        >
-                            {/* Drag handle */}
-                            <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
-                                <div className="w-12 h-1.5 rounded-full bg-gray-200" />
-                            </div>
-                            <div className="flex-1 overflow-hidden">
-                                <CartPanelInner orderType={orderType} onCheckoutClick={onCheckoutClick} mobile onClose={() => setOpen(false)} />
-                            </div>
-                        </motion.div>
-                    </>
-                )}
-            </AnimatePresence>
+            {/* Cart sheet via MobileSheet primitive */}
+            <MobileSheet isOpen={open} onClose={() => setOpen(false)}>
+                <div className="flex-1 overflow-hidden">
+                    <CartPanelInner
+                        orderType={orderType}
+                        onCheckoutClick={() => { setOpen(false); if (onCheckoutClick) onCheckoutClick(); }}
+                        mobile
+                        onClose={() => setOpen(false)}
+                    />
+                </div>
+            </MobileSheet>
         </>
     );
 };

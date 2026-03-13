@@ -120,8 +120,10 @@ const Menu: React.FC = () => {
     const [vegOnly, setVegOnly] = useState(false);
     const [popularOnly, setPopularOnly] = useState(false);
 
-    // Checkout drawer state
-    const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+    // Checkout / cart sheet state
+    type SheetView = 'closed' | 'cart' | 'checkout';
+    const [sheetView, setSheetView] = useState<SheetView>('closed');
+    const isAnySheetOpen = sheetView !== 'closed';
 
     // Section refs for scroll-spy
     const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -133,7 +135,7 @@ const Menu: React.FC = () => {
     // Listen for open-checkout events from AuthModal
     useEffect(() => {
         const handleOpenCheckout = () => {
-            setIsCheckoutOpen(true);
+            setSheetView('checkout');
         };
         window.addEventListener('open-checkout', handleOpenCheckout);
         return () => window.removeEventListener('open-checkout', handleOpenCheckout);
@@ -240,7 +242,7 @@ const Menu: React.FC = () => {
     return (
         <>
             <motion.div
-                animate={{ scale: isCheckoutOpen ? 0.97 : 1, transformOrigin: 'top center', borderRadius: isCheckoutOpen ? '16px' : '0px', overflow: isCheckoutOpen ? 'hidden' : 'visible' }}
+                animate={{ scale: isAnySheetOpen ? 0.97 : 1, transformOrigin: 'top center', borderRadius: isAnySheetOpen ? '16px' : '0px', overflow: isAnySheetOpen ? 'hidden' : 'visible' }}
                 transition={{ duration: 0.3 }}
                 className="flex-1 flex flex-col min-h-0 bg-gray-50"
             >
@@ -398,12 +400,16 @@ const Menu: React.FC = () => {
                     </div>
 
                     {/* Right: Cart panel */}
-                    <CartPanel orderType={orderType} onCheckoutClick={() => setIsCheckoutOpen(true)} isCheckoutOpen={isCheckoutOpen} />
+                    <CartPanel
+                        orderType={orderType}
+                        onCheckoutClick={() => setSheetView('checkout')}
+                        isCheckoutOpen={sheetView === 'checkout'}
+                    />
                 </div>
             </motion.div>
 
-            {/* Checkout Drawer (handles OTP inline for unauthenticated users) */}
-            <CheckoutDrawer isOpen={isCheckoutOpen} onClose={() => setIsCheckoutOpen(false)} />
+            {/* Checkout Drawer — uses MobileSheet internally */}
+            <CheckoutDrawer isOpen={sheetView === 'checkout'} onClose={() => setSheetView('closed')} />
         </>
     );
 };
