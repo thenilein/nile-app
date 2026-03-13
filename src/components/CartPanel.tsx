@@ -550,27 +550,27 @@ const MobileCartDrawer: React.FC<CartPanelProps> = ({ orderType, onCheckoutClick
                         initial={{ y: 150, opacity: 0 }}
                         animate={{ y: 0, opacity: 1 }}
                         exit={{ y: 150, opacity: 0 }}
-                        transition={{ type: "spring", damping: 20, stiffness: 300 }}
-                        className="xl:hidden fixed z-[60] bottom-0 left-0 right-0 w-full bg-[#15803d]/95 backdrop-blur-md"
+                        transition={{ type: "spring", damping: 22, stiffness: 350 }}
+                        className="xl:hidden fixed z-[60] bottom-0 left-0 right-0 w-full bg-white border-t border-gray-100 shadow-[0_-4px_24px_rgba(0,0,0,0.06)]"
                         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
                     >
                         <div
                             onClick={() => { if (!open) setOpen(true); }}
-                            className="h-[60px] flex items-center justify-between px-4 cursor-pointer"
+                            className="h-[64px] px-4 flex items-center justify-between cursor-pointer"
                         >
-                            <div className="flex items-center">
-                                <span className="text-xl leading-none -mt-0.5">🛒</span>
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center text-green-700">
+                                    <ShoppingBag className="w-5 h-5" />
+                                </div>
                                 <motion.div animate={badgeControls} className="origin-left">
-                                    <span className="text-white text-[15px] font-bold ml-2 inline-block">
+                                    <span className="text-gray-900 text-[15px] font-bold">
                                         {totalItems} item{totalItems !== 1 ? 's' : ''}
                                     </span>
                                 </motion.div>
                             </div>
 
-                            <div className="w-[1px] h-[30px] bg-white/20 mx-4" />
-
-                            <div 
-                                className="flex items-center justify-end flex-1"
+                            <button 
+                                className="h-[44px] bg-green-700 hover:bg-green-800 text-white px-5 rounded-xl flex items-center justify-center gap-2 font-bold shadow-md shadow-green-700/20 active:scale-95 transition-all"
                                 onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
@@ -578,10 +578,9 @@ const MobileCartDrawer: React.FC<CartPanelProps> = ({ orderType, onCheckoutClick
                                     if (onCheckoutClick) onCheckoutClick();
                                 }}
                             >
-                                <span className="text-white text-[16px] font-bold">
-                                    ₹{grandTotal.toFixed(0)} Checkout →
-                                </span>
-                            </div>
+                                <span>₹{grandTotal.toFixed(0)} Checkout</span>
+                                <ArrowRight className="w-4 h-4 ml-0.5" />
+                            </button>
                         </div>
                     </motion.div>
                 )}
