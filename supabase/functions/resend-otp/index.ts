@@ -1,31 +1,69 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+/// <reference path="../_shared/deno.d.ts" />
+export {};
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
 
-serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+const json = (status: number, body: Record<string, unknown>) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
   }
 
-  const { phone } = await req.json()
+  if (req.method !== "POST") {
+    return json(405, { success: false, message: "Method not allowed" });
+  }
 
-  // MSG91 retry endpoint has authkey issues; re-send OTP which is confirmed working
-  const url = `https://control.msg91.com/api/v5/otp?` +
-    new URLSearchParams({
-      template_id: Deno.env.get('MSG91_TEMPLATE_ID')!,
-      mobile: '91' + phone,
-      authkey: Deno.env.get('MSG91_AUTH_KEY')!,
-      otp_length: '6',
-      otp_expiry: '5'
-    })
+  try {
+    const { phone } = await req.json();
 
-  const response = await fetch(url, { method: 'POST' })
-  const data = await response.json()
+    if (typeof phone !== "string" || !/^[6-9]\d{9}$/.test(phone)) {
+      return json(400, { success: false, message: "Enter a valid 10-digit mobile number." });
+    }
 
-  return new Response(JSON.stringify(data), {
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-  })
-})
+    const authKey = Deno.env.get("MSG91_AUTH_KEY");
+    const templateId = Deno.env.get("MSG91_TEMPLATE_ID");
+
+    if (!authKey || !templateId) {
+      return json(500, { success: false, message: "OTP provider is not configured." });
+    }
+
+    // MSG91's retry endpoint has been unreliable here, so resend by issuing a fresh OTP.
+    const url = new URL("https://control.msg91.com/api/v5/otp");
+    url.search = new URLSearchParams({
+      template_id: templateId,
+      mobile: `91${phone}`,
+      authkey: authKey,
+      otp_length: "6",
+      otp_expiry: "5",
+    }).toString();
+
+    const response = await fetch(url, { method: "POST" });
+    const data = await response.json();
+
+    if (!response.ok || data?.type !== "success") {
+      return json(response.ok ? 400 : response.status, {
+        success: false,
+        message: data?.message || "Failed to resend OTP.",
+        provider: data,
+      });
+    }
+
+    return json(200, {
+      success: true,
+      message: data?.message || "OTP resent successfully.",
+      requestId: data?.request_id ?? data?.reqId ?? data?.requestId ?? null,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unexpected server error";
+    return json(500, { success: false, message });
+  }
+});

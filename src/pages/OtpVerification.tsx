@@ -8,10 +8,10 @@ const RESEND_COOLDOWN_SEC = 30;
 interface OtpVerificationProps {
   maskedPhone: string;
   onBack: () => void;
-  /** Called with the 6-digit OTP string — parent calls window.sendOtp.verifyOtp */
-  onVerifyOtp: (otp: string) => void;
-  /** Called to resend — parent calls window.sendOtp.retryOtp */
-  onResendOtp: () => void;
+  /** Called with the 6-digit OTP string and returns verification status */
+  onVerifyOtp: (otp: string) => Promise<boolean>;
+  /** Called to resend and returns resend status */
+  onResendOtp: () => Promise<boolean>;
   showToast: (type: "error" | "success", msg: string) => void;
 }
 
@@ -47,24 +47,6 @@ const OtpVerification: React.FC<OtpVerificationProps> = ({
   // Auto-focus first input on mount
   useEffect(() => {
     setTimeout(() => otpInputRefs.current[0]?.focus(), 100);
-  }, []);
-
-  // Listen for MSG91 success/failure events dispatched by AuthModal
-  useEffect(() => {
-    const onSuccess = () => {
-      setLoading(false);
-      setSuccess(true);
-    };
-    const onFailure = () => {
-      setLoading(false);
-      triggerShakeAndReset();
-    };
-    window.addEventListener("msg91-success", onSuccess);
-    window.addEventListener("msg91-failure", onFailure);
-    return () => {
-      window.removeEventListener("msg91-success", onSuccess);
-      window.removeEventListener("msg91-failure", onFailure);
-    };
   }, []);
 
   const handleOtpChange = (index: number, value: string) => {
@@ -114,28 +96,38 @@ const OtpVerification: React.FC<OtpVerificationProps> = ({
     }, 500);
   };
 
-  const handleVerify = (e?: React.FormEvent) => {
+  const handleVerify = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!isOtpComplete || loading || success) return;
     setLoading(true);
-    // MSG91 SDK verifies asynchronously; result arrives via msg91-success/failure events
-    onVerifyOtp(otp.join(""));
+    try {
+      const ok = await onVerifyOtp(otp.join(""));
+      if (ok) {
+        setSuccess(true);
+      } else {
+        triggerShakeAndReset();
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Auto-submit when all 6 digits are filled
   useEffect(() => {
     if (isOtpComplete && !loading && !success && !shake) {
-      handleVerify();
+      void handleVerify();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOtpComplete]);
 
-  const handleResend = () => {
+  const handleResend = async () => {
     if (resendCooldown > 0) return;
     setOtp(["", "", "", "", "", ""]);
     otpInputRefs.current[0]?.focus();
-    onResendOtp();
-    setResendCooldown(RESEND_COOLDOWN_SEC);
+    const ok = await onResendOtp();
+    if (ok) {
+      setResendCooldown(RESEND_COOLDOWN_SEC);
+    }
   };
 
   const shakeAnimation = {

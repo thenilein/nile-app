@@ -317,7 +317,6 @@ const Menu: React.FC = () => {
                     <div
                         ref={scrollContainerRef}
                         className="flex-1 min-w-0 overflow-y-auto space-y-8 pr-0 xl:pr-5"
-                        style={{ maxHeight: "calc(100vh - 180px)" }}
                     >
                         {loading ? (
                             <>

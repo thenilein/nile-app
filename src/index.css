@@ -9,6 +9,15 @@ body {
     max-width: 100%;
 }
 
+/* Ensure app root participates in flex layouts across pages */
+#root {
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
 /* Responsive images — scale within their container, never overflow */
 img {
     max-width: 100%;
