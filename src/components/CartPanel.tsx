@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence, useAnimation, useMotionValue, useTransform, animate } from "framer-motion";
 import { ShoppingBag, X, ArrowRight, Tag, ChevronDown } from "lucide-react";
 import { useCart } from "../context/CartContext.tsx";
+import { useLocation } from "../context/LocationContext.tsx";
 import { useNavigate } from "react-router-dom";
 import MobileSheet from "./MobileSheet.tsx";
 
@@ -322,6 +323,8 @@ const CartPanelInner: React.FC<CartPanelProps & { mobile?: boolean; onClose?: ()
     const discountAmt = Math.round(couponCode ? couponDiscount : 0);
     const grandTotal = subtotal + gst + deliveryFee - discountAmt;
 
+    const { isServiceable } = useLocation();
+
     const handleApplyCoupon = (code: string, discount: number) => {
         if (!code) {
             setCouponCode(null);
@@ -493,17 +496,32 @@ const CartPanelInner: React.FC<CartPanelProps & { mobile?: boolean; onClose?: ()
                     {!mobile ? (
                         <div className="px-4 pb-4">
                             <button
-                                onPointerDown={(e) => { e.preventDefault(); onCheckoutClick ? onCheckoutClick() : navigate("/checkout"); }}
-                                className="w-full h-12 rounded-xl text-white font-bold text-[15px] flex items-center justify-center gap-2 group transition-all duration-100 ease-out bg-[#16a34a] hover:bg-[#15803d] active:scale-[0.97]"
+                                disabled={orderType === "delivery" && !isServiceable}
+                                onPointerDown={(e) => {
+                                    e.preventDefault();
+                                    if (orderType === "delivery" && !isServiceable) return;
+                                    onCheckoutClick ? onCheckoutClick() : navigate("/checkout");
+                                }}
+                                className={`w-full h-12 rounded-xl font-bold text-[15px] flex items-center justify-center gap-2 group transition-all duration-100 ease-out active:scale-[0.97] ${orderType === "delivery" && !isServiceable
+                                    ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                                    : "bg-[#16a34a] hover:bg-[#15803d] text-white"
+                                    }`}
                             >
-                                <span>Checkout · ₹{grandTotal.toFixed(0)}</span>
-                                <motion.span
-                                    className="inline-block"
-                                    transition={{ duration: 0.2 }}
-                                    whileHover={{ x: 4 }}
-                                >
-                                    <ArrowRight className="w-4 h-4" />
-                                </motion.span>
+                                <span>
+                                    {orderType === "delivery" && !isServiceable
+                                        ? "Delivery Unavailable"
+                                        : `Checkout · ₹${grandTotal.toFixed(0)}`
+                                    }
+                                </span>
+                                {!(orderType === "delivery" && !isServiceable) && (
+                                    <motion.span
+                                        className="inline-block"
+                                        transition={{ duration: 0.2 }}
+                                        whileHover={{ x: 4 }}
+                                    >
+                                        <ArrowRight className="w-4 h-4" />
+                                    </motion.span>
+                                )}
                             </button>
                         </div>
                     ) : (
@@ -519,6 +537,7 @@ const CartPanelInner: React.FC<CartPanelProps & { mobile?: boolean; onClose?: ()
 // ─── MOBILE DRAWER ────────────────────────────────────────────────────────────
 const MobileCartDrawer: React.FC<CartPanelProps> = ({ orderType, onCheckoutClick, isCheckoutOpen }) => {
     const { totalItems, totalPrice } = useCart();
+    const { isServiceable } = useLocation();
     const [open, setOpen] = useState(false);
 
     const prevTotalItems = useRef(totalItems);
@@ -569,17 +588,29 @@ const MobileCartDrawer: React.FC<CartPanelProps> = ({ orderType, onCheckoutClick
                                 </motion.div>
                             </div>
 
-                            <button 
-                                className="h-[44px] bg-green-700 hover:bg-green-800 text-white px-5 rounded-xl flex items-center justify-center gap-2 font-bold shadow-md shadow-green-700/20 active:scale-95 transition-all"
+                            <button
+                                disabled={orderType === "delivery" && !isServiceable}
+                                className={`h-[44px] px-5 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${orderType === "delivery" && !isServiceable
+                                    ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                                    : "bg-green-700 hover:bg-green-800 text-white shadow-md shadow-green-700/20 active:scale-95"
+                                    }`}
                                 onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
+                                    if (orderType === "delivery" && !isServiceable) return;
                                     if (open) setOpen(false); // Close cart sheet before checkout
                                     if (onCheckoutClick) onCheckoutClick();
                                 }}
                             >
-                                <span>₹{grandTotal.toFixed(0)} Checkout</span>
-                                <ArrowRight className="w-4 h-4 ml-0.5" />
+                                <span>
+                                    {orderType === "delivery" && !isServiceable
+                                        ? "Unavailable"
+                                        : `₹${grandTotal.toFixed(0)} Checkout`
+                                    }
+                                </span>
+                                {!(orderType === "delivery" && !isServiceable) && (
+                                    <ArrowRight className="w-4 h-4 ml-0.5" />
+                                )}
                             </button>
                         </div>
                     </motion.div>

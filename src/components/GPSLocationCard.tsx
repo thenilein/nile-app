@@ -285,7 +285,7 @@ const GPSLocationCard: React.FC = () => {
                                             We don't deliver here yet 😔
                                         </p>
                                         <p className="text-amber-700 text-xs mb-3">
-                                            But we're expanding soon!
+                                            But we're expanding soon! You can still browse the menu.
                                         </p>
                                         {fallbackOutlet && (
                                             <>
@@ -298,6 +298,12 @@ const GPSLocationCard: React.FC = () => {
                                                 />
                                             </>
                                         )}
+                                        <button
+                                            onClick={handleStartOrdering}
+                                            className="w-full mt-4 py-3.5 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-bold flex items-center justify-center gap-2 transition-colors"
+                                        >
+                                            Browse Menu →
+                                        </button>
                                     </motion.div>
                                 )}
 
@@ -415,9 +421,15 @@ const GPSLocationCard: React.FC = () => {
                                         <p className="text-orange-800 font-semibold text-sm">
                                             No outlets near your location yet 😕
                                         </p>
-                                        <p className="text-orange-600 text-xs mt-1">
-                                            We currently only deliver within 7km. Check back soon!
+                                        <p className="text-orange-600 text-xs mt-1 mb-3">
+                                            We currently only deliver within 7km. You can still browse the menu or pick up your order!
                                         </p>
+                                        <button
+                                            onClick={handleStartOrdering}
+                                            className="w-full py-3.5 rounded-2xl bg-orange-600 hover:bg-orange-700 text-white font-bold flex items-center justify-center gap-2 transition-colors"
+                                        >
+                                            Browse Menu →
+                                        </button>
                                     </div>
                                 ) : null}
 
@@ -502,7 +514,13 @@ const GPSLocationCard: React.FC = () => {
                                         <p className="text-amber-800 font-semibold text-sm mb-1">
                                             We don't deliver here yet 😔
                                         </p>
-                                        <p className="text-amber-700 text-xs">But we're expanding soon!</p>
+                                        <p className="text-amber-700 text-xs mb-3">But we're expanding soon! You can still browse the menu.</p>
+                                        <button
+                                            onClick={handleStartOrdering}
+                                            className="w-full py-3.5 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-bold flex items-center justify-center gap-2 transition-colors"
+                                        >
+                                            Browse Menu →
+                                        </button>
                                     </motion.div>
                                 )}
 

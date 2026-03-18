@@ -104,7 +104,7 @@ const MobileCategoryTabs: React.FC<{
 // ─── Main Menu Component ──────────────────────────────────────────────────────
 const Menu: React.FC = () => {
     const { user } = useAuth();
-    const { locationData } = useLocation();
+    const { locationData, isServiceable } = useLocation();
     const navigate = useNavigate();
 
     // Data
@@ -304,6 +304,21 @@ const Menu: React.FC = () => {
                     onSelect={scrollToCategory}
                 />
 
+                {/* ── Unserviceable Alert ── */}
+                {orderType === "delivery" && !isServiceable && (
+                    <div className="bg-amber-50 border-b border-amber-200 px-4 py-3 flex items-start gap-3">
+                        <span className="text-amber-500 text-lg">⚠️</span>
+                        <div>
+                            <p className="text-amber-800 font-semibold text-sm">
+                                Delivery unavailable at this location
+                            </p>
+                            <p className="text-amber-700 text-xs mt-0.5">
+                                You are outside our 7km delivery radius. You can still browse the menu or switch to Pickup to place an order.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 {/* ── Main 3-column layout ── */}
                 <div className="flex flex-1 min-h-0 gap-0 px-4 md:px-6 py-4 max-w-[1600px] mx-auto w-full">
                     {/* Left: Category sidebar */}
@@ -409,7 +424,7 @@ const Menu: React.FC = () => {
             </motion.div>
 
             {/* Checkout Drawer — uses MobileSheet internally */}
-            <CheckoutDrawer isOpen={sheetView === 'checkout'} onClose={() => setSheetView('closed')} />
+            <CheckoutDrawer isOpen={sheetView === 'checkout'} onClose={() => setSheetView('closed')} deliveryType={orderType} />
         </>
     );
 };

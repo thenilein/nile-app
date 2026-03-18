@@ -22,9 +22,9 @@ const RESEND_COOLDOWN = 30;
 interface CheckoutDrawerProps {
     isOpen: boolean;
     onClose: () => void;
+    deliveryType: 'delivery' | 'pickup';
 }
 
-type DeliveryType = 'delivery' | 'pickup';
 type PaymentMethod = 'cash' | 'upi' | 'card' | 'wallet';
 type OtpStep = 'idle' | 'sent' | 'profile' | 'verified';
 
@@ -48,15 +48,14 @@ const Toast: React.FC<{ msg: { type: 'error' | 'success'; text: string } | null 
     </AnimatePresence>
 );
 
-const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
+const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose, deliveryType }) => {
     const { totalItems, totalPrice, items, clearCart } = useCart();
     const { user } = useAuth();
-    const { locationData, nearestOutlet, setLocationData, getCurrentLocation } = useLocation();
+    const { locationData, nearestOutlet, isServiceable, setLocationData, getCurrentLocation } = useLocation();
     const navigate = useNavigate();
 
     // Steps: 1 = Delivery, 2 = Payment, 3 = Confirmation
     const [step, setStep] = useState<1 | 2 | 3>(1);
-    const [deliveryType, setDeliveryType] = useState<DeliveryType>('delivery');
 
     // ── Phone + OTP state ──────────────────────────────────────────────
     const [phone, setPhone] = useState('');
@@ -300,9 +299,15 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
             setStep1Error('Please verify your phone number first.');
             return;
         }
-        if (deliveryType === 'delivery' && !houseNo.trim()) {
-            setStep1Error('Please enter your Flat / House / Apartment No.');
-            return;
+        if (deliveryType === 'delivery') {
+            if (!isServiceable) {
+                setStep1Error('Delivery is not available at your location. Please switch to Pickup.');
+                return;
+            }
+            if (!houseNo.trim()) {
+                setStep1Error('Please enter your Flat / House / Apartment No.');
+                return;
+            }
         }
         setStep1Error('');
         setStep(2);
@@ -553,7 +558,7 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
                                             )}
                                         </AnimatePresence>
 
-                                        {/* ── After phone verified: show toggle + address fields ── */}
+                                        {/* ── After phone verified: show address fields ── */}
                                         <AnimatePresence>
                                             {otpStep === 'verified' && (
                                                 <motion.div
@@ -563,16 +568,6 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
                                                     transition={{ duration: 0.35, ease: 'easeInOut' }}
                                                     className="overflow-hidden space-y-5"
                                                 >
-                                                    {/* Delivery / Pickup toggle */}
-                                                    <div className="flex bg-gray-100 p-1 rounded-xl">
-                                                        <button onClick={() => setDeliveryType('delivery')} className={`flex-1 flex justify-center items-center gap-2 h-[48px] md:h-auto md:py-2.5 rounded-lg text-[15px] md:text-sm font-bold transition-all ${deliveryType === 'delivery' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
-                                                            <Truck className="w-4 h-4 md:w-4 md:h-4" /> Delivery
-                                                        </button>
-                                                        <button onClick={() => setDeliveryType('pickup')} className={`flex-1 flex justify-center items-center gap-2 h-[48px] md:h-auto md:py-2.5 rounded-lg text-[15px] md:text-sm font-bold transition-all ${deliveryType === 'pickup' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
-                                                            <Store className="w-4 h-4 md:w-4 md:h-4" /> Pickup
-                                                        </button>
-                                                    </div>
-
                                                     {/* ── Delivery address fields ── */}
                                                     <AnimatePresence mode="wait">
                                                         {deliveryType === 'delivery' ? (
