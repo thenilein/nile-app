@@ -4,7 +4,6 @@ import { X, MapPin, Truck, Store, Banknote, CreditCard, Wallet, Smartphone, Shie
 import { useNavigate } from 'react-router-dom';
 import confetti from 'canvas-confetti';
 import { supabase } from '../lib/supabase';
-import MobileSheet from './MobileSheet';
 import ProfileCompletionForm from './ProfileCompletionForm';
 import {
     completeProfile as completeProfileCore,
@@ -22,9 +21,11 @@ const RESEND_COOLDOWN = 30;
 interface CheckoutDrawerProps {
     isOpen: boolean;
     onClose: () => void;
-    deliveryType: 'delivery' | 'pickup';
+    orderType?: DeliveryType;
+    onOrderTypeChange?: (t: DeliveryType) => void;
 }
 
+type DeliveryType = 'delivery' | 'pickup';
 type PaymentMethod = 'cash' | 'upi' | 'card' | 'wallet';
 type OtpStep = 'idle' | 'sent' | 'profile' | 'verified';
 
@@ -48,14 +49,21 @@ const Toast: React.FC<{ msg: { type: 'error' | 'success'; text: string } | null 
     </AnimatePresence>
 );
 
-const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose, deliveryType }) => {
+const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose, orderType, onOrderTypeChange }) => {
     const { totalItems, totalPrice, items, clearCart } = useCart();
     const { user } = useAuth();
-    const { locationData, nearestOutlet, isServiceable, setLocationData, getCurrentLocation } = useLocation();
+    const { locationData, nearestOutlet, setLocationData, getCurrentLocation } = useLocation();
     const navigate = useNavigate();
 
     // Steps: 1 = Delivery, 2 = Payment, 3 = Confirmation
     const [step, setStep] = useState<1 | 2 | 3>(1);
+    const [deliveryType, setDeliveryType] = useState<DeliveryType>(orderType ?? 'delivery');
+
+    useEffect(() => {
+        if (!isOpen) return;
+        if (!orderType) return;
+        setDeliveryType(orderType);
+    }, [isOpen, orderType]);
 
     // ── Phone + OTP state ──────────────────────────────────────────────
     const [phone, setPhone] = useState('');
@@ -121,6 +129,7 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose, delive
                 setStep(1);
                 setPaymentMethod(null);
                 setOrderId(null);
+                setDeliveryType(orderType ?? 'delivery');
                 setIsSubmitting(false);
                 setIsChangingLocation(false);
                 setLocSearchQuery('');
@@ -299,15 +308,9 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose, delive
             setStep1Error('Please verify your phone number first.');
             return;
         }
-        if (deliveryType === 'delivery') {
-            if (!isServiceable) {
-                setStep1Error('Delivery is not available at your location. Please switch to Pickup.');
-                return;
-            }
-            if (!houseNo.trim()) {
-                setStep1Error('Please enter your Flat / House / Apartment No.');
-                return;
-            }
+        if (deliveryType === 'delivery' && !houseNo.trim()) {
+            setStep1Error('Please enter your Flat / House / Apartment No.');
+            return;
         }
         setStep1Error('');
         setStep(2);
@@ -360,21 +363,32 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose, delive
     const shakeAnim = { x: [0, -8, 8, -8, 8, 0], transition: { duration: 0.4 } };
 
     return (
-        <>
-            {/* Toast floats above everything via fixed + z-[200] */}
-            <Toast msg={toastMsg} />
+        <AnimatePresence>
+            {isOpen && (
+                <>
+                    <Toast msg={toastMsg} />
 
-            <MobileSheet
-                isOpen={isOpen}
-                onClose={step !== 3 ? onClose : () => {}}
-                disableDrag={step === 3}
-            >
-                {/* ── Sheet inner container ── */}
-                <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+                    {/* Backdrop */}
+                    <motion.div
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        onClick={() => step !== 3 && onClose()}
+                        className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-[4px]"
+                    />
+
+                    {/* Bottom Sheet */}
+                    <motion.div
+                        initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+                        transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+                        drag={step !== 3 ? 'y' : false}
+                        dragConstraints={{ top: 0, bottom: 0 }}
+                        dragElastic={0.05}
+                        onDragEnd={(_, info) => { if (info.offset.y > 100 && step !== 3) onClose(); }}
+                        className="fixed bottom-0 left-0 right-0 z-[101] bg-white w-full mx-auto md:max-w-[480px] xl:max-w-[480px] origin-bottom rounded-none md:rounded-t-[24px] shadow-2xl flex flex-col h-[100vh] h-[100dvh] md:h-auto md:max-h-[90vh]"
+                    >
                         {/* Drag Handle */}
                         {step !== 3 ? (
-                            <div className="flex justify-center pt-3 pb-2 flex-shrink-0 bg-[#16a34a] rounded-t-[24px]">
-                                <div className="w-12 h-1.5 rounded-full bg-white/30" />
+                            <div className="flex justify-center pt-3 pb-2 flex-shrink-0 bg-[#16a34a] md:bg-white rounded-none md:rounded-t-[24px]">
+                                <div className="w-12 h-1.5 md:w-10 md:h-1 rounded-full bg-white/30 md:bg-gray-300" />
                             </div>
                         ) : (
                             <div className="flex justify-center pt-3 pb-2 flex-shrink-0">
@@ -384,36 +398,37 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose, delive
 
                         {/* Header */}
                         {step !== 3 && (
-                            <div className="px-5 pb-3 pt-2 flex-shrink-0 bg-[#16a34a] text-white">
+                            <div className="px-5 pb-3 pt-2 md:pt-0 flex-shrink-0 bg-[#16a34a] md:bg-white text-white md:text-gray-900">
                                 <div className="flex items-center justify-between mb-3">
-                                    <h2 className="text-xl font-bold">Complete Your Order</h2>
-                                    <button onClick={onClose} className="p-1 rounded-full hover:bg-white/20 transition-colors">
-                                        <X className="w-5 h-5 text-white/80" />
+                                    <h2 className="text-xl md:text-xl font-bold">Complete Your Order</h2>
+                                    <button onClick={onClose} className="p-1 rounded-full hover:bg-white/20 md:hover:bg-gray-100 transition-colors">
+                                        <X className="w-5 h-5 text-white/80 md:text-gray-500" />
                                     </button>
                                 </div>
                                 <div className="flex items-center gap-2 mb-3">
-                                    <span className="bg-white/20 text-white text-xs font-bold px-3 py-1.5 rounded-full">
+                                    <span className="bg-white/20 md:bg-green-100 text-white md:text-green-800 text-xs font-bold px-3 py-1.5 md:py-1 rounded-full md:border md:border-green-200">
                                         {totalItems} items · ₹{grandTotal}
                                     </span>
                                 </div>
+                                <div className="hidden md:block h-px bg-green-100 w-full" />
                             </div>
                         )}
 
                         {/* Step Indicator */}
                         {step !== 3 && (
-                            <div className="px-5 py-3 flex items-center justify-between flex-shrink-0 text-[11px] font-bold uppercase tracking-wider bg-[#16a34a] z-10">
-                                <div className="flex items-center gap-1.5 text-white">
-                                    {step > 1 ? <Check className="w-4 h-4 text-white" /> : <div className="w-4 h-4 rounded-full bg-white flex items-center justify-center text-[#16a34a] text-[9px]">1</div>}
+                            <div className="px-5 py-3 md:py-2 flex items-center justify-between flex-shrink-0 text-[11px] font-bold uppercase tracking-wider bg-[#16a34a] md:bg-white shadow-[0_4px_12px_rgba(0,0,0,0.05)] md:shadow-none z-10">
+                                <div className={`flex items-center gap-1.5 ${step === 1 ? 'text-white md:text-green-700' : 'text-white md:text-green-700'}`}>
+                                    {step > 1 ? <Check className="w-4 h-4 text-white md:text-green-600" /> : <div className="w-4 h-4 rounded-full bg-white md:bg-green-600 flex items-center justify-center text-[#16a34a] md:text-white text-[9px]">1</div>}
                                     <span>Delivery</span>
                                 </div>
-                                <div className={`h-px flex-1 mx-2 ${step > 1 ? 'bg-white/50' : 'bg-[#15803d]'}`} />
-                                <div className={`flex items-center gap-1.5 ${step === 2 ? 'text-white' : 'text-[#14532d]'}`}>
-                                    <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] ${step === 2 ? 'bg-white text-[#16a34a]' : 'bg-[#15803d] text-white/50'}`}>2</div>
+                                <div className={`h-px flex-1 mx-2 ${step > 1 ? 'bg-white/50 md:bg-green-500' : 'bg-[#15803d] md:bg-gray-200'}`} />
+                                <div className={`flex items-center gap-1.5 ${step === 2 ? 'text-white md:text-green-700' : 'text-[#14532d] md:text-gray-400'}`}>
+                                    <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] ${step === 2 ? 'bg-white text-[#16a34a] md:bg-green-600 md:text-white' : 'bg-[#15803d] text-white/50 md:bg-gray-200 md:text-gray-500'}`}>2</div>
                                     <span>Payment</span>
                                 </div>
-                                <div className="h-px flex-1 mx-2 bg-[#15803d]" />
-                                <div className="flex items-center gap-1.5 text-[#14532d]">
-                                    <div className="w-4 h-4 rounded-full bg-[#15803d] flex items-center justify-center text-[9px] text-white/50">3</div>
+                                <div className="h-px flex-1 mx-2 bg-[#15803d] md:bg-gray-200" />
+                                <div className="flex items-center gap-1.5 text-[#14532d] md:text-gray-400">
+                                    <div className="w-4 h-4 rounded-full bg-[#15803d] md:bg-gray-200 flex items-center justify-center text-[9px] text-white/50 md:text-gray-500">3</div>
                                     <span>Confirm</span>
                                 </div>
                             </div>
@@ -558,7 +573,7 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose, delive
                                             )}
                                         </AnimatePresence>
 
-                                        {/* ── After phone verified: show address fields ── */}
+                                        {/* ── After phone verified: show toggle + address fields ── */}
                                         <AnimatePresence>
                                             {otpStep === 'verified' && (
                                                 <motion.div
@@ -568,6 +583,28 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose, delive
                                                     transition={{ duration: 0.35, ease: 'easeInOut' }}
                                                     className="overflow-hidden space-y-5"
                                                 >
+                                                    {/* Delivery / Pickup toggle */}
+                                                    <div className="flex bg-gray-100 p-1 rounded-xl">
+                                    <button
+                                        onClick={() => {
+                                            setDeliveryType('delivery');
+                                            onOrderTypeChange?.('delivery');
+                                        }}
+                                        className={`flex-1 flex justify-center items-center gap-2 h-[48px] md:h-auto md:py-2.5 rounded-lg text-[15px] md:text-sm font-bold transition-all ${deliveryType === 'delivery' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                                    >
+                                                            <Truck className="w-4 h-4 md:w-4 md:h-4" /> Delivery
+                                                        </button>
+                                    <button
+                                        onClick={() => {
+                                            setDeliveryType('pickup');
+                                            onOrderTypeChange?.('pickup');
+                                        }}
+                                        className={`flex-1 flex justify-center items-center gap-2 h-[48px] md:h-auto md:py-2.5 rounded-lg text-[15px] md:text-sm font-bold transition-all ${deliveryType === 'pickup' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                                    >
+                                                            <Store className="w-4 h-4 md:w-4 md:h-4" /> Pickup
+                                                        </button>
+                                                    </div>
+
                                                     {/* ── Delivery address fields ── */}
                                                     <AnimatePresence mode="wait">
                                                         {deliveryType === 'delivery' ? (
@@ -809,9 +846,10 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose, delive
 
                             </AnimatePresence>
                         </div>
-                </div>
-            </MobileSheet>
-        </>
+                    </motion.div>
+                </>
+            )}
+        </AnimatePresence>
     );
 };
 

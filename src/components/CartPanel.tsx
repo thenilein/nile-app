@@ -1,10 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence, useAnimation, useMotionValue, useTransform, animate } from "framer-motion";
-import { ShoppingBag, X, ArrowRight, Tag, ChevronDown } from "lucide-react";
+import { ShoppingBag, X, ArrowRight, Tag, ChevronDown, ImageOff } from "lucide-react";
 import { useCart } from "../context/CartContext.tsx";
-import { useLocation } from "../context/LocationContext.tsx";
 import { useNavigate } from "react-router-dom";
-import MobileSheet from "./MobileSheet.tsx";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const DELIVERY_FEE = 30;
@@ -15,18 +13,6 @@ const VALID_COUPONS: Record<string, number> = {
     NILE20: 20,
     ICECREAM50: 50,
 };
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function getCategoryEmoji(name: string): string {
-    const n = name.toLowerCase();
-    if (n.includes("shake") || n.includes("milk")) return "🥤";
-    if (n.includes("waffle") || n.includes("crepe")) return "🧇";
-    if (n.includes("sundae")) return "🍧";
-    if (n.includes("cone")) return "🍦";
-    if (n.includes("brownie") || n.includes("cake")) return "🎂";
-    if (n.includes("nutella") || n.includes("choco")) return "🍫";
-    return "🍨";
-}
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -101,7 +87,7 @@ const CartItemRow: React.FC<CartItemRowProps> = React.memo(({ item, onInc, onDec
                             className="w-full h-full object-cover rounded-lg"
                         />
                     ) : (
-                        <span>{getCategoryEmoji(item.name)}</span>
+                        <ImageOff className="w-4 h-4 text-gray-400" />
                     )}
                 </div>
 
@@ -177,8 +163,8 @@ const DeliveryProgress: React.FC<{ subtotal: number; orderType: string }> = ({ s
             <div className="flex justify-between items-center mb-1.5">
                 <p className="text-[11px] text-gray-500 font-medium">
                     {reached
-                        ? <span className="text-green-600">🎉 Free delivery unlocked!</span>
-                        : `Add ₹${(FREE_DELIVERY_THRESHOLD - subtotal).toFixed(0)} more for free delivery 🛵`}
+                        ? <span className="text-green-600">Free delivery unlocked</span>
+                        : `Add ₹${(FREE_DELIVERY_THRESHOLD - subtotal).toFixed(0)} more for free delivery`}
                 </p>
             </div>
             {/* Bar */}
@@ -323,8 +309,6 @@ const CartPanelInner: React.FC<CartPanelProps & { mobile?: boolean; onClose?: ()
     const discountAmt = Math.round(couponCode ? couponDiscount : 0);
     const grandTotal = subtotal + gst + deliveryFee - discountAmt;
 
-    const { isServiceable } = useLocation();
-
     const handleApplyCoupon = (code: string, discount: number) => {
         if (!code) {
             setCouponCode(null);
@@ -350,12 +334,6 @@ const CartPanelInner: React.FC<CartPanelProps & { mobile?: boolean; onClose?: ()
                 maxHeight: mobile ? "none" : "calc(100vh - 5.5rem)",
             }}
         >
-            {/* Drag handle pip — only visible in mobile sheet mode */}
-            {mobile && (
-                <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
-                    <div className="w-12 h-1.5 rounded-full bg-gray-200" />
-                </div>
-            )}
             {/* ── HEADER ── */}
             <div className="flex items-center justify-between px-4 pt-4 pb-3 flex-shrink-0">
                 <div className="flex items-center gap-2.5">
@@ -396,18 +374,17 @@ const CartPanelInner: React.FC<CartPanelProps & { mobile?: boolean; onClose?: ()
             {/* ── ITEMS ── */}
             <div className="flex-1 overflow-y-auto pt-1" style={{ scrollbarWidth: "none" }}>
                 {items.length === 0 ? (
-                    /* ── EMPTY STATE ── */
-                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <div className="flex flex-col items-center justify-center px-6 py-14 text-center">
                         <motion.div
-                            animate={{ y: [0, -8, 0] }}
-                            transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
-                            className="text-[64px] mb-4 select-none drop-shadow-sm"
+                            animate={{ y: [0, -6, 0] }}
+                            transition={{ repeat: Infinity, duration: 2.2, ease: "easeInOut" }}
+                            className="mb-5 flex h-36 w-full max-w-[220px] items-center justify-center rounded-3xl bg-[#FAFAFA]"
                         >
-                            🛒
+                            <ShoppingBag className="h-16 w-16 text-[#D1D5DB]" />
                         </motion.div>
-                        <p className="font-bold text-gray-900 text-sm mb-1">Your cart is empty</p>
-                        <p className="text-xs text-gray-500 mb-2">
-                            Start adding delicious items!
+                        <p className="mb-1 text-lg font-semibold text-[#D1D5DB]">Your Cart Is Empty</p>
+                        <p className="text-sm text-[#D1D5DB]">
+                            Add items from the menu to get started.
                         </p>
                     </div>
                 ) : (
@@ -496,32 +473,17 @@ const CartPanelInner: React.FC<CartPanelProps & { mobile?: boolean; onClose?: ()
                     {!mobile ? (
                         <div className="px-4 pb-4">
                             <button
-                                disabled={orderType === "delivery" && !isServiceable}
-                                onPointerDown={(e) => {
-                                    e.preventDefault();
-                                    if (orderType === "delivery" && !isServiceable) return;
-                                    onCheckoutClick ? onCheckoutClick() : navigate("/checkout");
-                                }}
-                                className={`w-full h-12 rounded-xl font-bold text-[15px] flex items-center justify-center gap-2 group transition-all duration-100 ease-out active:scale-[0.97] ${orderType === "delivery" && !isServiceable
-                                    ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                                    : "bg-[#16a34a] hover:bg-[#15803d] text-white"
-                                    }`}
+                                onPointerDown={(e) => { e.preventDefault(); onCheckoutClick ? onCheckoutClick() : navigate("/checkout"); }}
+                                className="w-full h-12 rounded-xl text-white font-bold text-[15px] flex items-center justify-center gap-2 group transition-all duration-100 ease-out bg-[#16a34a] hover:bg-[#15803d] active:scale-[0.97]"
                             >
-                                <span>
-                                    {orderType === "delivery" && !isServiceable
-                                        ? "Delivery Unavailable"
-                                        : `Checkout · ₹${grandTotal.toFixed(0)}`
-                                    }
-                                </span>
-                                {!(orderType === "delivery" && !isServiceable) && (
-                                    <motion.span
-                                        className="inline-block"
-                                        transition={{ duration: 0.2 }}
-                                        whileHover={{ x: 4 }}
-                                    >
-                                        <ArrowRight className="w-4 h-4" />
-                                    </motion.span>
-                                )}
+                                <span>Checkout · ₹{grandTotal.toFixed(0)}</span>
+                                <motion.span
+                                    className="inline-block"
+                                    transition={{ duration: 0.2 }}
+                                    whileHover={{ x: 4 }}
+                                >
+                                    <ArrowRight className="w-4 h-4" />
+                                </motion.span>
                             </button>
                         </div>
                     ) : (
@@ -537,7 +499,6 @@ const CartPanelInner: React.FC<CartPanelProps & { mobile?: boolean; onClose?: ()
 // ─── MOBILE DRAWER ────────────────────────────────────────────────────────────
 const MobileCartDrawer: React.FC<CartPanelProps> = ({ orderType, onCheckoutClick, isCheckoutOpen }) => {
     const { totalItems, totalPrice } = useCart();
-    const { isServiceable } = useLocation();
     const [open, setOpen] = useState(false);
 
     const prevTotalItems = useRef(totalItems);
@@ -558,7 +519,7 @@ const MobileCartDrawer: React.FC<CartPanelProps> = ({ orderType, onCheckoutClick
     const deliveryFee = orderType === "delivery" ? (subtotal >= FREE_DELIVERY_THRESHOLD ? 0 : DELIVERY_FEE) : 0;
     const grandTotal = subtotal + gst + deliveryFee;
 
-    const showPill = totalItems > 0 && !isCheckoutOpen && !open;
+    const showPill = totalItems > 0 && !isCheckoutOpen;
 
     return (
         <>
@@ -569,65 +530,81 @@ const MobileCartDrawer: React.FC<CartPanelProps> = ({ orderType, onCheckoutClick
                         initial={{ y: 150, opacity: 0 }}
                         animate={{ y: 0, opacity: 1 }}
                         exit={{ y: 150, opacity: 0 }}
-                        transition={{ type: "spring", damping: 22, stiffness: 350 }}
-                        className="xl:hidden fixed z-[60] bottom-0 left-0 right-0 w-full bg-white border-t border-gray-100 shadow-[0_-4px_24px_rgba(0,0,0,0.06)]"
-                        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+                        transition={{ type: "spring", damping: 20, stiffness: 300 }}
+                        className="xl:hidden fixed z-[60] left-1/2 -translate-x-1/2"
+                        style={{ bottom: "calc(env(safe-area-inset-bottom) + 5.5rem)" }}
                     >
                         <div
                             onClick={() => { if (!open) setOpen(true); }}
-                            className="h-[64px] px-4 flex items-center justify-between cursor-pointer"
+                            className="flex h-14 min-w-[280px] items-center justify-between gap-4 rounded-full bg-[#0B6B43] px-5 shadow-[0_16px_40px_rgba(11,107,67,0.3)] cursor-pointer"
                         >
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center text-green-700">
-                                    <ShoppingBag className="w-5 h-5" />
-                                </div>
+                            <div className="flex items-center">
+                                <ShoppingBag className="h-5 w-5 text-white" />
                                 <motion.div animate={badgeControls} className="origin-left">
-                                    <span className="text-gray-900 text-[15px] font-bold">
+                                    <span className="text-white text-[15px] font-bold ml-2 inline-block">
                                         {totalItems} item{totalItems !== 1 ? 's' : ''}
                                     </span>
                                 </motion.div>
                             </div>
 
-                            <button
-                                disabled={orderType === "delivery" && !isServiceable}
-                                className={`h-[44px] px-5 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${orderType === "delivery" && !isServiceable
-                                    ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                                    : "bg-green-700 hover:bg-green-800 text-white shadow-md shadow-green-700/20 active:scale-95"
-                                    }`}
+                            <div className="h-7 w-px bg-white/20" />
+
+                            <div 
+                                className="flex items-center justify-end flex-1"
                                 onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    if (orderType === "delivery" && !isServiceable) return;
                                     if (open) setOpen(false); // Close cart sheet before checkout
                                     if (onCheckoutClick) onCheckoutClick();
                                 }}
                             >
-                                <span>
-                                    {orderType === "delivery" && !isServiceable
-                                        ? "Unavailable"
-                                        : `₹${grandTotal.toFixed(0)} Checkout`
-                                    }
+                                <span className="text-white text-[15px] font-bold whitespace-nowrap">
+                                    ₹{grandTotal.toFixed(0)} Checkout
                                 </span>
-                                {!(orderType === "delivery" && !isServiceable) && (
-                                    <ArrowRight className="w-4 h-4 ml-0.5" />
-                                )}
-                            </button>
+                            </div>
                         </div>
                     </motion.div>
                 )}
             </AnimatePresence>
 
-            {/* Cart sheet via MobileSheet primitive */}
-            <MobileSheet isOpen={open} onClose={() => setOpen(false)}>
-                <div className="flex-1 overflow-hidden">
-                    <CartPanelInner
-                        orderType={orderType}
-                        onCheckoutClick={() => { setOpen(false); if (onCheckoutClick) onCheckoutClick(); }}
-                        mobile
-                        onClose={() => setOpen(false)}
-                    />
-                </div>
-            </MobileSheet>
+            {/* Drawer backdrop + panel */}
+            <AnimatePresence>
+                {open && (
+                    <>
+                        <motion.div
+                            key="backdrop"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setOpen(false)}
+                            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm xl:hidden"
+                        />
+                        <motion.div
+                            key="drawer"
+                            initial={{ y: "100%" }}
+                            animate={{ y: 0 }}
+                            exit={{ y: "100%" }}
+                            transition={{ type: "spring", stiffness: 320, damping: 35 }}
+                            drag="y"
+                            dragConstraints={{ top: 0 }}
+                            dragElastic={0.1}
+                            onDragEnd={(_, info) => {
+                                if (info.offset.y > 100) setOpen(false);
+                            }}
+                            className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-[24px] xl:hidden flex flex-col overflow-hidden shadow-[0_-8px_32px_rgba(0,0,0,0.1)]"
+                            style={{ touchAction: "none", height: "75vh" }}
+                        >
+                            {/* Drag handle */}
+                            <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
+                                <div className="w-12 h-1.5 rounded-full bg-gray-200" />
+                            </div>
+                            <div className="flex-1 overflow-hidden">
+                                <CartPanelInner orderType={orderType} onCheckoutClick={onCheckoutClick} mobile onClose={() => setOpen(false)} />
+                            </div>
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
         </>
     );
 };
@@ -637,8 +614,8 @@ const CartPanel: React.FC<CartPanelProps> = ({ orderType, onCheckoutClick, isChe
     return (
         <>
             {/* Desktop sidebar */}
-            <aside className="w-[320px] flex-shrink-0 hidden xl:flex flex-col">
-                <div className="sticky top-[80px]">
+            <aside className="hidden w-[320px] flex-shrink-0 xl:flex xl:flex-col">
+                <div className="sticky top-8">
                     <CartPanelInner orderType={orderType} onCheckoutClick={onCheckoutClick} />
                 </div>
             </aside>

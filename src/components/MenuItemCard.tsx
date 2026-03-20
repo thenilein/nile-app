@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from "react";
-import { Leaf, Star, Flame } from "lucide-react";
+import { Flame, ImageOff } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCart } from "../context/CartContext.tsx";
 
@@ -19,29 +19,6 @@ export interface Product {
 interface MenuItemCardProps {
     product: Product;
     variant?: "grid" | "top";
-}
-
-// Emoji fallback palette for categories — gives cards visual variety without images
-const EMOJI_MAP: Record<string, string> = {
-    "ice cream": "🍨",
-    "sundae": "🍧",
-    "milkshake": "🥛",
-    "shake": "🥤",
-    "waffle": "🧇",
-    "crepe": "🥞",
-    "falooda": "🍹",
-    "cake": "🎂",
-    "pack": "📦",
-    "seasonal": "🌟",
-    "special": "✨",
-};
-
-function getEmoji(name: string): string {
-    const lower = name.toLowerCase();
-    for (const [key, emoji] of Object.entries(EMOJI_MAP)) {
-        if (lower.includes(key)) return emoji;
-    }
-    return "🍦";
 }
 
 const MenuItemCard: React.FC<MenuItemCardProps> = React.memo(({ product, variant = "grid" }) => {
@@ -78,114 +55,98 @@ const MenuItemCard: React.FC<MenuItemCardProps> = React.memo(({ product, variant
 
     return (
         <div
-            style={{ willChange: 'transform' }}
-            className={`relative rounded-2xl bg-white overflow-hidden shadow-sm border border-gray-100/80 hover:shadow-md transition-all duration-200 flex flex-col ${unavailable ? "opacity-60" : ""} ${variant === "top" ? "h-full w-[150px] md:w-full" : "h-full"}`}
+            style={{ willChange: "transform" }}
+            className={`group relative flex gap-4 border-b border-[#F1F5F9] py-5 transition-opacity ${unavailable ? "opacity-60" : ""}`}
         >
-            {/* ── Image Section (16:9 Aspect Ratio) ── */}
-            <div className="relative w-full aspect-[16/9] flex-shrink-0 bg-gradient-to-br from-green-50 to-emerald-100 overflow-hidden">
-                {product.image_url ? (
-                    <img
-                        src={product.image_url as string}
-                        alt={product.name}
-                        className="w-full h-full object-cover"
-                        loading="lazy"
-                        decoding="async"
-                    />
-                ) : (
-                    <div className="w-full h-full flex items-center justify-center text-5xl md:text-6xl select-none">
-                        {getEmoji(product.name)}
+            <div className="min-w-0 flex-1 pr-3">
+                <div className="mb-2 flex items-start gap-2">
+                    <div className={`mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[3px] border ${product.is_veg !== false ? "border-green-600" : "border-red-500"}`}>
+                        <div className={`h-2 w-2 rounded-full ${product.is_veg !== false ? "bg-green-600" : "bg-red-500"}`} />
                     </div>
+                    <div className="min-w-0">
+                        {product.is_popular && (
+                            <span className="mb-1 inline-flex items-center gap-1 rounded-full bg-[#FFF7ED] px-2 py-0.5 text-[10px] font-semibold text-[#C2410C]">
+                                <Flame className="h-3 w-3" />
+                                Bestseller
+                            </span>
+                        )}
+                        <h3 className={`text-[17px] font-semibold leading-tight text-[#111827] ${variant === "top" ? "md:text-[20px]" : ""}`}>
+                            {product.name}
+                        </h3>
+                    </div>
+                </div>
+
+                <p className="mb-2 text-[18px] font-medium text-[#111827]">₹{product.price}</p>
+
+                {product.description && (
+                    <p className={`max-w-[540px] text-[14px] leading-6 text-[#6B7280] ${variant === "top" ? "line-clamp-3" : "line-clamp-2 md:line-clamp-3"}`}>
+                        {product.description}
+                    </p>
                 )}
-
-                {/* Overlaid Badges */}
-                <div className="absolute top-2 left-2 flex gap-1 z-10 flex-wrap pointer-events-none">
-                    {product.is_popular && (
-                        <span className="inline-flex items-center gap-1 bg-amber-400 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md shadow-sm">
-                            <Flame className="w-3 h-3" /> Popular
-                        </span>
-                    )}
-                    {unavailable && (
-                        <span className="inline-flex items-center bg-gray-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md">
-                            Unavailable
-                        </span>
-                    )}
-                </div>
-
-                {/* Veg / Non-Veg Indicator */}
-                <div className="absolute top-2 right-2 z-10 pointer-events-none">
-                    <div className={`w-4 h-4 md:w-5 md:h-5 border-[1.5px] md:border-2 rounded-sm flex items-center justify-center shadow-sm bg-white/90 backdrop-blur-sm ${product.is_veg !== false ? "border-green-600" : "border-red-500"}`}>
-                        <div className={`w-2 h-2 md:w-2.5 md:h-2.5 rounded-full ${product.is_veg !== false ? "bg-green-600" : "bg-red-500"}`} />
-                    </div>
-                </div>
             </div>
 
-            {/* ── Content Section ── */}
-            <div className="p-3 md:p-4 flex flex-col flex-1 relative">
-                <div className="flex-[1_0_auto]">
-                    <h3 className="font-semibold text-gray-900 text-[15px] md:text-[16px] leading-tight mb-1 line-clamp-1 pr-1">
-                        {product.name}
-                    </h3>
-                    
-                    {product.description ? (
-                        <p className="text-gray-500 text-[12px] md:text-[13px] leading-snug line-clamp-2 md:line-clamp-2 mb-3">
-                            {product.description}
-                        </p>
+            <div className="relative w-[118px] flex-shrink-0 md:w-[148px]">
+                <div className="h-[110px] w-full overflow-hidden rounded-2xl bg-gradient-to-br from-[#FEF3C7] to-[#FED7AA] shadow-[0_10px_24px_rgba(15,23,42,0.08)] md:h-[132px]">
+                    {product.image_url ? (
+                        <img
+                            src={product.image_url}
+                            alt={product.name}
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                            decoding="async"
+                        />
                     ) : (
-                        <div className="h-2 mb-3" />
+                        <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-[#F8FAFC] text-[#9CA3AF]">
+                            <ImageOff className="h-6 w-6 md:h-7 md:w-7" />
+                            <span className="px-2 text-center text-[11px] font-medium uppercase tracking-[0.2em]">
+                                No image
+                            </span>
+                        </div>
                     )}
                 </div>
 
-                {/* ── Price and Add Button Row ── */}
-                <div className="flex items-end justify-between mt-auto">
-                    <span className="font-semibold text-gray-900 text-[14px] md:text-[15px] leading-none mb-1.5">
-                        ₹{product.price}
-                    </span>
-
-                    <div className="relative min-h-[36px] flex items-end">
-                        {unavailable ? (
-                            <span className="text-[11px] text-gray-500 font-medium px-2 py-1.5 bg-gray-100 rounded-lg">
-                                Out of stock
-                            </span>
-                        ) : qty === 0 ? (
+                <div className="absolute -bottom-4 left-1/2 flex -translate-x-1/2 items-center justify-center">
+                    {unavailable ? (
+                        <span className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-semibold text-gray-400 shadow-sm">
+                            Unavailable
+                        </span>
+                    ) : qty === 0 ? (
+                        <button
+                            onPointerDown={handleAdd}
+                            className="min-w-[78px] rounded-xl border border-[#D1D5DB] bg-white px-5 py-2.5 text-[14px] font-bold tracking-wide text-[#15803d] shadow-[0_8px_18px_rgba(15,23,42,0.08)] transition-all active:scale-95"
+                        >
+                            ADD
+                        </button>
+                    ) : (
+                        <div className="flex items-center overflow-hidden rounded-xl bg-[#15803d] text-white shadow-[0_8px_18px_rgba(21,128,61,0.24)]">
                             <button
-                                onPointerDown={handleAdd}
-                                className="h-[36px] px-6 bg-green-50 text-green-700 border border-green-200 rounded-[12px] font-bold text-[14px] flex items-center justify-center shadow-sm active:scale-95 transition-transform shrink-0"
+                                onPointerDown={handleDecrease}
+                                className="flex h-10 w-9 items-center justify-center text-lg font-bold transition-colors hover:bg-[#166534]"
                             >
-                                ADD
+                                −
                             </button>
-                        ) : (
-                            <div className="h-[36px] min-w-[84px] max-w-[96px] bg-green-700 rounded-[20px] shadow-md flex items-center justify-between px-[4px] py-[4px] gap-2 overflow-hidden shrink-0">
-                                <button 
-                                    onPointerDown={handleDecrease} 
-                                    className="w-[28px] h-[28px] rounded-full flex items-center justify-center text-white bg-green-800/40 hover:bg-green-800 font-bold active:scale-90 transition-transform shrink-0"
-                                >
-                                    −
-                                </button>
-                                
-                                <div className="flex-1 flex items-center justify-center overflow-hidden perspective-500">
-                                    <AnimatePresence mode="popLayout" initial={false}>
-                                        <motion.span
-                                            key={qty}
-                                            initial={{ y: -15, opacity: 0 }}
-                                            animate={{ y: 0, opacity: 1 }}
-                                            exit={{ y: 15, opacity: 0 }}
-                                            transition={{ duration: 0.15, ease: "easeOut" }}
-                                            className="text-center text-white text-[14px] font-bold flex-shrink-0 origin-center leading-none"
-                                        >
-                                            {qty}
-                                        </motion.span>
-                                    </AnimatePresence>
-                                </div>
-                                
-                                <button 
-                                    onPointerDown={handleIncrease} 
-                                    className="w-[28px] h-[28px] rounded-full flex items-center justify-center text-white bg-green-800/40 hover:bg-green-800 font-bold active:scale-90 transition-transform shrink-0"
-                                >
-                                    +
-                                </button>
+                            <div className="flex h-10 w-9 items-center justify-center">
+                                <AnimatePresence mode="popLayout" initial={false}>
+                                    <motion.span
+                                        key={qty}
+                                        initial={{ rotateX: -90, opacity: 0 }}
+                                        animate={{ rotateX: 0, opacity: 1 }}
+                                        exit={{ rotateX: 90, opacity: 0 }}
+                                        transition={{ duration: 0.12 }}
+                                        className="text-sm font-bold"
+                                    >
+                                        {qty}
+                                    </motion.span>
+                                </AnimatePresence>
                             </div>
-                        )}
-                    </div>
+                            <button
+                                onPointerDown={handleIncrease}
+                                className="flex h-10 w-9 items-center justify-center text-lg font-bold transition-colors hover:bg-[#166534]"
+                            >
+                                +
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
