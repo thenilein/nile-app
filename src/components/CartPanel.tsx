@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence, useAnimation, useMotionValue, useTransform, animate } from "framer-motion";
-import { ShoppingBag, X, ArrowRight, Tag, ChevronDown } from "lucide-react";
+import { ShoppingBag, X, ArrowRight, Tag, ChevronDown, ImageOff } from "lucide-react";
 import { useCart } from "../context/CartContext.tsx";
 import { useNavigate } from "react-router-dom";
 
@@ -13,18 +13,6 @@ const VALID_COUPONS: Record<string, number> = {
     NILE20: 20,
     ICECREAM50: 50,
 };
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function getCategoryEmoji(name: string): string {
-    const n = name.toLowerCase();
-    if (n.includes("shake") || n.includes("milk")) return "🥤";
-    if (n.includes("waffle") || n.includes("crepe")) return "🧇";
-    if (n.includes("sundae")) return "🍧";
-    if (n.includes("cone")) return "🍦";
-    if (n.includes("brownie") || n.includes("cake")) return "🎂";
-    if (n.includes("nutella") || n.includes("choco")) return "🍫";
-    return "🍨";
-}
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -99,7 +87,7 @@ const CartItemRow: React.FC<CartItemRowProps> = React.memo(({ item, onInc, onDec
                             className="w-full h-full object-cover rounded-lg"
                         />
                     ) : (
-                        <span>{getCategoryEmoji(item.name)}</span>
+                        <ImageOff className="w-4 h-4 text-gray-400" />
                     )}
                 </div>
 
@@ -175,8 +163,8 @@ const DeliveryProgress: React.FC<{ subtotal: number; orderType: string }> = ({ s
             <div className="flex justify-between items-center mb-1.5">
                 <p className="text-[11px] text-gray-500 font-medium">
                     {reached
-                        ? <span className="text-green-600">🎉 Free delivery unlocked!</span>
-                        : `Add ₹${(FREE_DELIVERY_THRESHOLD - subtotal).toFixed(0)} more for free delivery 🛵`}
+                        ? <span className="text-green-600">Free delivery unlocked</span>
+                        : `Add ₹${(FREE_DELIVERY_THRESHOLD - subtotal).toFixed(0)} more for free delivery`}
                 </p>
             </div>
             {/* Bar */}
@@ -386,18 +374,17 @@ const CartPanelInner: React.FC<CartPanelProps & { mobile?: boolean; onClose?: ()
             {/* ── ITEMS ── */}
             <div className="flex-1 overflow-y-auto pt-1" style={{ scrollbarWidth: "none" }}>
                 {items.length === 0 ? (
-                    /* ── EMPTY STATE ── */
-                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <div className="flex flex-col items-center justify-center px-6 py-14 text-center">
                         <motion.div
-                            animate={{ y: [0, -8, 0] }}
-                            transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
-                            className="text-[64px] mb-4 select-none drop-shadow-sm"
+                            animate={{ y: [0, -6, 0] }}
+                            transition={{ repeat: Infinity, duration: 2.2, ease: "easeInOut" }}
+                            className="mb-5 flex h-36 w-full max-w-[220px] items-center justify-center rounded-3xl bg-[#FAFAFA]"
                         >
-                            🛒
+                            <ShoppingBag className="h-16 w-16 text-[#D1D5DB]" />
                         </motion.div>
-                        <p className="font-bold text-gray-900 text-sm mb-1">Your cart is empty</p>
-                        <p className="text-xs text-gray-500 mb-2">
-                            Start adding delicious items!
+                        <p className="mb-1 text-lg font-semibold text-[#D1D5DB]">Your Cart Is Empty</p>
+                        <p className="text-sm text-[#D1D5DB]">
+                            Add items from the menu to get started.
                         </p>
                     </div>
                 ) : (
@@ -544,15 +531,15 @@ const MobileCartDrawer: React.FC<CartPanelProps> = ({ orderType, onCheckoutClick
                         animate={{ y: 0, opacity: 1 }}
                         exit={{ y: 150, opacity: 0 }}
                         transition={{ type: "spring", damping: 20, stiffness: 300 }}
-                        className="xl:hidden fixed z-[60] bottom-0 left-0 right-0 w-full bg-[#15803d]/95 backdrop-blur-md"
-                        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+                        className="xl:hidden fixed z-[60] left-1/2 -translate-x-1/2"
+                        style={{ bottom: "calc(env(safe-area-inset-bottom) + 5.5rem)" }}
                     >
                         <div
                             onClick={() => { if (!open) setOpen(true); }}
-                            className="h-[60px] flex items-center justify-between px-4 cursor-pointer"
+                            className="flex h-14 min-w-[280px] items-center justify-between gap-4 rounded-full bg-[#0B6B43] px-5 shadow-[0_16px_40px_rgba(11,107,67,0.3)] cursor-pointer"
                         >
                             <div className="flex items-center">
-                                <span className="text-xl leading-none -mt-0.5">🛒</span>
+                                <ShoppingBag className="h-5 w-5 text-white" />
                                 <motion.div animate={badgeControls} className="origin-left">
                                     <span className="text-white text-[15px] font-bold ml-2 inline-block">
                                         {totalItems} item{totalItems !== 1 ? 's' : ''}
@@ -560,7 +547,7 @@ const MobileCartDrawer: React.FC<CartPanelProps> = ({ orderType, onCheckoutClick
                                 </motion.div>
                             </div>
 
-                            <div className="w-[1px] h-[30px] bg-white/20 mx-4" />
+                            <div className="h-7 w-px bg-white/20" />
 
                             <div 
                                 className="flex items-center justify-end flex-1"
@@ -571,8 +558,8 @@ const MobileCartDrawer: React.FC<CartPanelProps> = ({ orderType, onCheckoutClick
                                     if (onCheckoutClick) onCheckoutClick();
                                 }}
                             >
-                                <span className="text-white text-[16px] font-bold">
-                                    ₹{grandTotal.toFixed(0)} Checkout →
+                                <span className="text-white text-[15px] font-bold whitespace-nowrap">
+                                    ₹{grandTotal.toFixed(0)} Checkout
                                 </span>
                             </div>
                         </div>
@@ -627,8 +614,8 @@ const CartPanel: React.FC<CartPanelProps> = ({ orderType, onCheckoutClick, isChe
     return (
         <>
             {/* Desktop sidebar */}
-            <aside className="w-[320px] flex-shrink-0 hidden xl:flex flex-col">
-                <div className="sticky top-[80px]">
+            <aside className="hidden w-[320px] flex-shrink-0 xl:flex xl:flex-col">
+                <div className="sticky top-8">
                     <CartPanelInner orderType={orderType} onCheckoutClick={onCheckoutClick} />
                 </div>
             </aside>

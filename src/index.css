@@ -34,3 +34,29 @@ img {
         transform: translateX(200%);
     }
 }
+
+/* Hide scrollbars while keeping scroll functionality */
+.menu-scrollbar-hide {
+    -ms-overflow-style: none; /* IE/Edge */
+    scrollbar-width: none; /* Firefox */
+}
+
+.menu-scrollbar-hide::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
+    width: 0;
+    height: 0;
+}
+
+/* Mobile: hide scroll indicators across the app */
+@media (max-width: 767px) {
+    * {
+        -ms-overflow-style: none; /* IE/Edge */
+        scrollbar-width: none; /* Firefox */
+    }
+
+    *::-webkit-scrollbar {
+        display: none; /* Chrome/Safari/Android */
+        width: 0;
+        height: 0;
+    }
+}

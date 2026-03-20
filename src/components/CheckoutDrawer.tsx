@@ -21,6 +21,8 @@ const RESEND_COOLDOWN = 30;
 interface CheckoutDrawerProps {
     isOpen: boolean;
     onClose: () => void;
+    orderType?: DeliveryType;
+    onOrderTypeChange?: (t: DeliveryType) => void;
 }
 
 type DeliveryType = 'delivery' | 'pickup';
@@ -47,7 +49,7 @@ const Toast: React.FC<{ msg: { type: 'error' | 'success'; text: string } | null 
     </AnimatePresence>
 );
 
-const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
+const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose, orderType, onOrderTypeChange }) => {
     const { totalItems, totalPrice, items, clearCart } = useCart();
     const { user } = useAuth();
     const { locationData, nearestOutlet, setLocationData, getCurrentLocation } = useLocation();
@@ -55,7 +57,13 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
 
     // Steps: 1 = Delivery, 2 = Payment, 3 = Confirmation
     const [step, setStep] = useState<1 | 2 | 3>(1);
-    const [deliveryType, setDeliveryType] = useState<DeliveryType>('delivery');
+    const [deliveryType, setDeliveryType] = useState<DeliveryType>(orderType ?? 'delivery');
+
+    useEffect(() => {
+        if (!isOpen) return;
+        if (!orderType) return;
+        setDeliveryType(orderType);
+    }, [isOpen, orderType]);
 
     // ── Phone + OTP state ──────────────────────────────────────────────
     const [phone, setPhone] = useState('');
@@ -121,6 +129,7 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
                 setStep(1);
                 setPaymentMethod(null);
                 setOrderId(null);
+                setDeliveryType(orderType ?? 'delivery');
                 setIsSubmitting(false);
                 setIsChangingLocation(false);
                 setLocSearchQuery('');
@@ -576,10 +585,22 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose }) => {
                                                 >
                                                     {/* Delivery / Pickup toggle */}
                                                     <div className="flex bg-gray-100 p-1 rounded-xl">
-                                                        <button onClick={() => setDeliveryType('delivery')} className={`flex-1 flex justify-center items-center gap-2 h-[48px] md:h-auto md:py-2.5 rounded-lg text-[15px] md:text-sm font-bold transition-all ${deliveryType === 'delivery' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
+                                    <button
+                                        onClick={() => {
+                                            setDeliveryType('delivery');
+                                            onOrderTypeChange?.('delivery');
+                                        }}
+                                        className={`flex-1 flex justify-center items-center gap-2 h-[48px] md:h-auto md:py-2.5 rounded-lg text-[15px] md:text-sm font-bold transition-all ${deliveryType === 'delivery' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                                    >
                                                             <Truck className="w-4 h-4 md:w-4 md:h-4" /> Delivery
                                                         </button>
-                                                        <button onClick={() => setDeliveryType('pickup')} className={`flex-1 flex justify-center items-center gap-2 h-[48px] md:h-auto md:py-2.5 rounded-lg text-[15px] md:text-sm font-bold transition-all ${deliveryType === 'pickup' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
+                                    <button
+                                        onClick={() => {
+                                            setDeliveryType('pickup');
+                                            onOrderTypeChange?.('pickup');
+                                        }}
+                                        className={`flex-1 flex justify-center items-center gap-2 h-[48px] md:h-auto md:py-2.5 rounded-lg text-[15px] md:text-sm font-bold transition-all ${deliveryType === 'pickup' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                                    >
                                                             <Store className="w-4 h-4 md:w-4 md:h-4" /> Pickup
                                                         </button>
                                                     </div>

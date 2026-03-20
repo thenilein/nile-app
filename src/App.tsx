@@ -58,7 +58,7 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
 
 const AppRoutes = () => {
     const location = useLocation();
-    const showNavbar = !location.pathname.startsWith('/admin');
+    const showNavbar = !location.pathname.startsWith('/admin') && location.pathname !== "/menu";
 
     return (
         <div className="min-h-screen bg-white font-sans flex flex-col items-stretch">
