@@ -1,8 +1,30 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 
+/**
+ * Mapbox token for client bundle. Vite only exposes `VITE_*` from .env into import.meta.env.
+ * Hosting CI often sets MAPBOX_ACCESS_TOKEN without the prefix — merge here so production builds work.
+ */
+function resolveMapboxTokenForBundle(mode: string): string {
+    const fromFile = loadEnv(mode, process.cwd(), "");
+    const pick = (v: string | undefined) => (typeof v === "string" ? v.trim() : "");
+    return (
+        pick(process.env.VITE_MAPBOX_ACCESS_TOKEN) ||
+        pick(process.env.VITE_MAPBOX_TOKEN) ||
+        pick(process.env.MAPBOX_ACCESS_TOKEN) ||
+        pick(fromFile.VITE_MAPBOX_ACCESS_TOKEN) ||
+        pick(fromFile.VITE_MAPBOX_TOKEN) ||
+        pick(fromFile.MAPBOX_ACCESS_TOKEN) ||
+        ""
+    );
+}
+
 export default defineConfig(({ mode }) => {
+    const mapboxToken = resolveMapboxTokenForBundle(mode);
     return {
+        define: {
+            __MAPBOX_BUNDLE_TOKEN__: JSON.stringify(mapboxToken),
+        },
         base: './',
         plugins: [react()],
         build: {

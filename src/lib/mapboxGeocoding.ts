@@ -35,8 +35,14 @@ interface MapboxGeocodeResponse {
 
 function getToken(): string | undefined {
     const env = import.meta.env as ImportMetaEnv & Record<string, string | undefined>;
-    const t = env.VITE_MAPBOX_ACCESS_TOKEN || env.VITE_MAPBOX_TOKEN;
-    return typeof t === "string" && t.trim().length > 0 ? t.trim() : undefined;
+    const fromMeta = env.VITE_MAPBOX_ACCESS_TOKEN || env.VITE_MAPBOX_TOKEN;
+    const fromBundle =
+        typeof __MAPBOX_BUNDLE_TOKEN__ === "string" && __MAPBOX_BUNDLE_TOKEN__.trim().length > 0
+            ? __MAPBOX_BUNDLE_TOKEN__.trim()
+            : "";
+    const t =
+        (typeof fromMeta === "string" && fromMeta.trim().length > 0 ? fromMeta.trim() : "") || fromBundle;
+    return t.length > 0 ? t : undefined;
 }
 
 /** Public token for Geocoding API and Mapbox map tiles (restrict by URL in Mapbox dashboard). */
