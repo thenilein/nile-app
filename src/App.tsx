@@ -58,10 +58,15 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
 
 const AppRoutes = () => {
     const location = useLocation();
-    const showNavbar = !location.pathname.startsWith('/admin') && location.pathname !== "/menu";
+    const showNavbar =
+        !location.pathname.startsWith("/admin") && location.pathname !== "/menu" && location.pathname !== "/";
 
     return (
-        <div className="min-h-screen bg-white font-sans flex flex-col items-stretch">
+        <div
+            className={`min-h-screen font-sans flex flex-col items-stretch ${
+                location.pathname === "/" ? "bg-[#fbfbfd]" : "bg-white"
+            }`}
+        >
             {showNavbar && <Navbar />}
             <Routes>
                 {/* Customer routes */}

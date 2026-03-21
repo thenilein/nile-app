@@ -1,102 +1,48 @@
-import React, { useState, useEffect } from "react";
+import React, { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import GPSLocationCard from "../components/GPSLocationCard.tsx";
-import { useLocation } from "../context/LocationContext.tsx";
-import { useAuth } from "../context/AuthContext.tsx";
+import LandingHeroCarousel from "../components/LandingHeroCarousel.tsx";
 
-const MapPinIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 mb-4">
-        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-        <circle cx="12" cy="10" r="3"></circle>
-    </svg>
-);
-
-const ShoppingBagIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 mb-4">
-        <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"></path>
-        <path d="M3 6h18"></path>
-        <path d="M16 10a4 4 0 0 1-8 0"></path>
-    </svg>
-);
-
-const TruckIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 mb-4">
-        <rect width="15" height="10" x="1" y="8" rx="3"></rect>
-        <path d="M16 8h4a2 2 0 0 1 2 2v4h-6"></path>
-        <circle cx="5.5" cy="18.5" r="2.5"></circle>
-        <circle cx="18.5" cy="18.5" r="2.5"></circle>
-    </svg>
-);
-
-const HeaderSection = () => {
-    const [activeTab, setActiveTab] = useState("Delivery");
-    const { locationData, isServiceable } = useLocation();
-    const { user } = useAuth();
+const HeroSection = () => {
     const navigate = useNavigate();
 
-    // Auto-redirect when a serviceable location is set (login no longer required to browse)
-    useEffect(() => {
-        if (locationData && isServiceable) {
-            navigate("/menu");
-        }
-    }, [locationData, isServiceable, navigate]);
+    const handleOrderNow = useCallback(() => {
+        navigate("/menu");
+    }, [navigate]);
 
     return (
-        <section className="flex flex-col items-center pt-10 sm:pt-16 pb-10 sm:pb-16 px-4">
-            <div className="flex gap-8 mb-10 sm:mb-12 relative">
-                {["Delivery", "Pickup"].map((tab) => (
+        <section className="relative flex min-h-dvh flex-col bg-[#fbfbfd]">
+            <div
+                className="pointer-events-none absolute inset-0"
+                style={{
+                    background:
+                        "radial-gradient(ellipse 120% 80% at 50% -20%, rgba(0, 0, 0, 0.04) 0%, transparent 55%), radial-gradient(ellipse 90% 50% at 50% 100%, rgba(0, 0, 0, 0.03) 0%, transparent 60%)",
+                }}
+                aria-hidden
+            />
+
+            <div className="relative z-10 flex min-h-dvh flex-1 flex-col">
+                <div className="w-full min-h-0 flex-1 pt-[max(1.25rem,env(safe-area-inset-top)+12px)]">
+                    <LandingHeroCarousel />
+                </div>
+
+                <div className="shrink-0 px-6 text-center">
+                    <p className="text-[15px] font-normal tracking-wide text-neutral-500">Welcome to</p>
+                    <h1 className="mt-1.5 text-[34px] font-semibold leading-[1.1] tracking-[-0.02em] text-neutral-950 sm:text-[40px]">
+                        Nile Ice Creams
+                    </h1>
+                    <p className="mx-auto mt-4 max-w-[20.5rem] text-[15px] font-normal leading-[1.45] text-neutral-600 sm:max-w-sm sm:text-[17px] sm:leading-relaxed">
+                        Create beautiful moments for every craving. Order scoops and sundaes delivered fresh to you.
+                    </p>
+                </div>
+
+                <div className="shrink-0 px-6 pb-[max(1.75rem,env(safe-area-inset-bottom))] pt-10">
                     <button
-                        key={tab}
-                        onClick={() => setActiveTab(tab)}
-                        className={`text-base font-semibold pb-2 border-b-2 transition-colors duration-200 ${activeTab === tab
-                            ? "border-green-800 text-green-800"
-                            : "border-transparent text-gray-500 hover:text-gray-800"
-                            }`}
+                        type="button"
+                        onClick={handleOrderNow}
+                        className="mx-auto block w-full max-w-[22rem] rounded-full bg-neutral-950 py-3.5 text-[17px] font-semibold text-white transition-transform active:scale-[0.98] sm:py-4"
                     >
-                        {tab}
+                        Order Now
                     </button>
-                ))}
-            </div>
-
-            <div className="text-center max-w-2xl mx-auto w-full mb-8 sm:mb-10">
-                <p className="text-gray-400 font-medium text-base sm:text-lg mb-3">Let's get ordering</p>
-                <h1 className="text-2xl sm:text-4xl md:text-5xl font-bold text-gray-800 tracking-tight">
-                    Set your delivery location to get started.
-                </h1>
-            </div>
-
-            {/* ── GPS LOCATION CARD ── */}
-            <GPSLocationCard />
-        </section>
-    );
-};
-
-const FeaturesSection = () => {
-    return (
-        <section className="border-t border-gray-100 py-12 sm:py-20 px-4 flex justify-center w-full">
-            <div className="w-full max-w-screen-xl flex flex-col sm:flex-row justify-between text-center gap-10 sm:gap-0">
-                <div className="flex flex-col items-center flex-1 px-4">
-                    <MapPinIcon />
-                    <h3 className="text-[17px] font-semibold text-gray-800 mb-2">Set your location</h3>
-                    <p className="text-gray-400 text-sm leading-relaxed max-w-[200px]">
-                        Tell us where you want to get your items delivered
-                    </p>
-                </div>
-
-                <div className="flex flex-col items-center flex-1 px-4">
-                    <ShoppingBagIcon />
-                    <h3 className="text-[17px] font-semibold text-gray-800 mb-2">Choose your items</h3>
-                    <p className="text-gray-400 text-sm leading-relaxed max-w-[200px]">
-                        Add the items you want in your cart
-                    </p>
-                </div>
-
-                <div className="flex flex-col items-center flex-1 px-4">
-                    <TruckIcon />
-                    <h3 className="text-[17px] font-semibold text-gray-800 mb-2">Have it delivered instantly</h3>
-                    <p className="text-gray-400 text-sm leading-relaxed max-w-[200px]">
-                        Our delivery partners will deliver your order at your doorstep
-                    </p>
                 </div>
             </div>
         </section>
@@ -105,11 +51,8 @@ const FeaturesSection = () => {
 
 export const Landing = () => {
     return (
-        <main className="flex-1 flex flex-col">
-            <div className="flex-1 flex flex-col justify-center">
-                <HeaderSection />
-            </div>
-            <FeaturesSection />
+        <main className="min-h-dvh bg-[#fbfbfd] text-neutral-950 antialiased">
+            <HeroSection />
         </main>
     );
 };
