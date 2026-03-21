@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, MapPin, Store, Truck, User, X } from "lucide-react";
+import { ChevronDown, MapPin, ShoppingBag, Store, Truck, User, X } from "lucide-react";
 import { motion } from "framer-motion";
 import { supabase } from "../lib/supabase.ts";
 import { useLocation } from "../context/LocationContext.tsx";
@@ -8,10 +8,10 @@ import MenuItemCard, { Product } from "../components/MenuItemCard.tsx";
 import CartPanel from "../components/CartPanel.tsx";
 import PromoBanner from "../components/PromoBanner.tsx";
 import MenuSearch, { VegOnlyToggle } from "../components/MenuSearch.tsx";
-import CheckoutDrawer from "../components/CheckoutDrawer.tsx";
 import LocationSearch from "../components/LocationSearch.tsx";
 import AuthModal from "../components/AuthModal.tsx";
 import { useAuth } from "../context/AuthContext.tsx";
+import { useCart } from "../context/CartContext.tsx";
 
 interface Category {
     id: string;
@@ -88,6 +88,7 @@ async function fetchTopMenus(): Promise<TopMenu[]> {
 const Menu: React.FC = () => {
     const { locationData, nearestOutlet, getCurrentLocation } = useLocation();
     const { user, signOut } = useAuth();
+    const { totalItems } = useCart();
 
     const [categories, setCategories] = useState<Category[]>([]);
     const [menus, setMenus] = useState<TopMenu[]>([]);
@@ -100,9 +101,9 @@ const Menu: React.FC = () => {
     const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
     const [vegOnly, setVegOnly] = useState(false);
-    const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+    const [checkoutLaunchKey, setCheckoutLaunchKey] = useState(0);
     const [isCategoryDrawerOpen, setIsCategoryDrawerOpen] = useState(false);
-    const [mobileNavigatorView, setMobileNavigatorView] = useState<"menus" | "categories">("menus");
+    const [mobileCartDrawerOpen, setMobileCartDrawerOpen] = useState(false);
     const [isLocationPickerOpen, setIsLocationPickerOpen] = useState(false);
     const [isAccountSheetOpen, setIsAccountSheetOpen] = useState(false);
 
@@ -117,13 +118,14 @@ const Menu: React.FC = () => {
 
     useEffect(() => {
         overlayOpenRef.current = Boolean(
-            isCheckoutOpen || isCategoryDrawerOpen || isLocationPickerOpen || isAccountSheetOpen
+            isCategoryDrawerOpen || isLocationPickerOpen || isAccountSheetOpen || mobileCartDrawerOpen
         );
-    }, [isCheckoutOpen, isCategoryDrawerOpen, isLocationPickerOpen, isAccountSheetOpen]);
+    }, [isCategoryDrawerOpen, isLocationPickerOpen, isAccountSheetOpen, mobileCartDrawerOpen]);
 
     useEffect(() => {
         const handleOpenCheckout = () => {
-            setIsCheckoutOpen(true);
+            setMobileCartDrawerOpen(true);
+            setCheckoutLaunchKey((k) => k + 1);
         };
         window.addEventListener("open-checkout", handleOpenCheckout);
         return () => window.removeEventListener("open-checkout", handleOpenCheckout);
@@ -231,7 +233,6 @@ const Menu: React.FC = () => {
     const displayedMenuGroups = menuGroups;
     const activeMenuGroup = menuGroups.find((group) => group.id === activeMenuId) || menuGroups[0] || null;
     const activeCategory = categories.find((category) => category.id === activeCategoryId) || null;
-    const activeMenuLabel = activeMenuGroup?.name || "Menus";
     const activeCategoryLabel = activeCategory?.name || activeMenuGroup?.categories[0]?.name || "Categories";
 
     const categoryToMenuId = useMemo(() => {
@@ -335,8 +336,7 @@ const Menu: React.FC = () => {
         }
     }, [menuGroups, scrollToCategory]);
 
-    const openMobileNavigator = useCallback((view: "menus" | "categories") => {
-        setMobileNavigatorView(view);
+    const openCategorySheet = useCallback(() => {
         setIsCategoryDrawerOpen(true);
     }, []);
 
@@ -495,10 +495,10 @@ const Menu: React.FC = () => {
             <motion.div
                 ref={menuViewportRef}
                 animate={{
-                    scale: isCheckoutOpen ? 0.985 : 1,
+                    scale: 1,
                     transformOrigin: "top center",
-                    borderRadius: isCheckoutOpen ? "20px" : "0px",
-                    overflow: isCheckoutOpen ? "hidden" : "visible",
+                    borderRadius: "0px",
+                    overflow: "visible",
                 }}
                 transition={{ duration: 0.3 }}
                 className="flex min-h-0 flex-1 flex-col bg-white md:h-[100dvh] md:overflow-hidden"
@@ -756,44 +756,26 @@ const Menu: React.FC = () => {
 
                     <CartPanel
                         orderType={orderType}
-                        onCheckoutClick={() => setIsCheckoutOpen(true)}
-                        isCheckoutOpen={isCheckoutOpen}
+                        onOrderTypeChange={setOrderType}
+                        checkoutLaunchKey={checkoutLaunchKey}
+                        hideMobileFloatingBar
+                        mobileCartDrawerOpen={mobileCartDrawerOpen}
+                        onMobileCartDrawerOpenChange={setMobileCartDrawerOpen}
                     />
                 </div>
             </motion.div>
 
-            {!isCheckoutOpen && (
+            {!mobileCartDrawerOpen && (
                 <div
-                    className="fixed bottom-6 left-1/2 z-40 flex h-14 -translate-x-1/2 overflow-hidden rounded-full border border-[#E5E7EB] bg-white shadow-[0_16px_40px_rgba(15,23,42,0.16)] lg:hidden"
+                    className="fixed z-[60] left-1/2 flex h-12 w-max max-w-[min(calc(100vw-2rem),17.5rem)] -translate-x-1/2 overflow-hidden rounded-full border border-[#E5E7EB] bg-white shadow-[0_12px_32px_rgba(15,23,42,0.12)] xl:hidden"
                     style={{ bottom: "calc(env(safe-area-inset-bottom) + 1rem)" }}
                 >
                     <button
                         type="button"
-                        onClick={() => openMobileNavigator("menus")}
-                        className="flex min-w-[132px] items-center gap-2 px-4 text-left text-[#111827]"
+                        onClick={openCategorySheet}
+                        className="flex min-w-0 max-w-[11rem] flex-1 items-center gap-2 pl-3 pr-2 text-left text-[#111827] transition-colors active:bg-gray-50"
                     >
-                        <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#F3F4F6] text-[11px] font-semibold text-[#6B7280]">
-                            {activeMenuGroup?.image_url ? (
-                                <img
-                                    src={activeMenuGroup.image_url}
-                                    alt={activeMenuLabel}
-                                    className="h-full w-full object-cover"
-                                    loading="lazy"
-                                    decoding="async"
-                                />
-                            ) : (
-                                <span>{activeMenuLabel.charAt(0).toUpperCase()}</span>
-                            )}
-                        </div>
-                        <p className="truncate text-[13px] font-semibold">{activeMenuLabel}</p>
-                    </button>
-                    <div className="my-3 w-px bg-[#E5E7EB]" />
-                    <button
-                        type="button"
-                        onClick={() => openMobileNavigator("categories")}
-                        className="flex min-w-[150px] items-center gap-2 px-4 text-left text-[#111827]"
-                    >
-                        <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#F3F4F6] text-[11px] font-semibold text-[#6B7280]">
+                        <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#F3F4F6] text-[10px] font-semibold text-[#6B7280]">
                             {activeCategory?.image_url ? (
                                 <img
                                     src={activeCategory.image_url}
@@ -806,7 +788,17 @@ const Menu: React.FC = () => {
                                 <span>{activeCategoryLabel.charAt(0).toUpperCase()}</span>
                             )}
                         </div>
-                        <p className="truncate text-[13px] font-semibold">{activeCategoryLabel}</p>
+                        <p className="min-w-0 flex-1 truncate text-[13px] font-semibold">{activeCategoryLabel}</p>
+                    </button>
+                    <div className="my-2.5 w-px shrink-0 bg-[#E5E7EB]" aria-hidden />
+                    <button
+                        type="button"
+                        onClick={() => setMobileCartDrawerOpen(true)}
+                        className="flex shrink-0 items-center gap-1.5 pl-2 pr-3 text-[#111827] transition-colors active:bg-gray-50"
+                        aria-label={`Open cart, ${totalItems} items`}
+                    >
+                        <ShoppingBag className="h-5 w-5 shrink-0 text-[#374151]" />
+                        <span className="text-[14px] font-bold tabular-nums">{totalItems}</span>
                     </button>
                 </div>
             )}
@@ -816,11 +808,11 @@ const Menu: React.FC = () => {
                     <button
                         type="button"
                         onClick={() => setIsCategoryDrawerOpen(false)}
-                        className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+                        className="fixed inset-0 z-40 bg-black/40 xl:hidden"
                     />
-                    <div className="fixed bottom-0 left-0 right-0 z-50 rounded-t-[28px] bg-white px-5 pb-6 pt-4 shadow-[0_-18px_48px_rgba(15,23,42,0.18)] lg:hidden">
+                    <div className="fixed bottom-0 left-0 right-0 z-50 rounded-t-[28px] bg-white px-5 pb-6 pt-4 shadow-[0_-18px_48px_rgba(15,23,42,0.18)] xl:hidden">
                         <div className="mb-4 flex items-center justify-between">
-                            <h2 className="text-[20px] font-semibold text-[#111827]">Browse</h2>
+                            <h2 className="text-[20px] font-semibold text-[#111827]">Categories</h2>
                             <button
                                 type="button"
                                 onClick={() => setIsCategoryDrawerOpen(false)}
@@ -829,102 +821,47 @@ const Menu: React.FC = () => {
                                 <X className="h-5 w-5" />
                             </button>
                         </div>
-                        <div className="mb-4 flex rounded-full bg-[#F3F4F6] p-1">
-                            <button
-                                type="button"
-                                onClick={() => setMobileNavigatorView("menus")}
-                                className={`flex-1 rounded-full px-4 py-2 text-[13px] font-semibold transition-colors ${
-                                    mobileNavigatorView === "menus"
-                                        ? "bg-white text-[#111827] shadow-sm"
-                                        : "text-[#6B7280]"
-                                }`}
-                            >
-                                Menus
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setMobileNavigatorView("categories")}
-                                className={`flex-1 rounded-full px-4 py-2 text-[13px] font-semibold transition-colors ${
-                                    mobileNavigatorView === "categories"
-                                        ? "bg-white text-[#111827] shadow-sm"
-                                        : "text-[#6B7280]"
-                                }`}
-                            >
-                                Categories
-                            </button>
-                        </div>
                         <div className="max-h-[58vh] overflow-y-auto">
-                            {mobileNavigatorView === "menus" ? (
-                                menuGroups.map((group) => (
-                                    <button
-                                        key={group.id}
-                                        type="button"
-                                        onClick={() => scrollToMenuGroup(group.id)}
-                                        className={`mb-2 flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-[15px] ${
-                                            activeMenuId === group.id ? "bg-[#F0FDF4] text-[#166534]" : "text-[#374151]"
-                                        }`}
-                                    >
-                                        <div className="flex min-w-0 items-center gap-3">
-                                            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#F3F4F6] text-[13px] font-semibold text-[#6B7280]">
-                                                {group.image_url ? (
-                                                    <img
-                                                        src={group.image_url}
-                                                        alt={group.name || "Menu"}
-                                                        className="h-full w-full object-cover"
-                                                        loading="lazy"
-                                                        decoding="async"
-                                                    />
-                                                ) : (
-                                                    <span>{(group.name || "Menu").charAt(0).toUpperCase()}</span>
-                                                )}
-                                            </div>
-                                            <span className="truncate font-medium">{group.name || "Menu"}</span>
-                                        </div>
-                                        <ChevronDown className={`h-4 w-4 -rotate-90 ${activeMenuId === group.id ? "opacity-100" : "opacity-0"}`} />
-                                    </button>
-                                ))
-                            ) : (
-                                menuGroups.map((group) => (
-                                    <div key={group.id} className="mb-5 last:mb-0">
-                                        {group.name && (
-                                            <p className="mb-2 px-1 text-[12px] font-semibold uppercase tracking-[0.18em] text-[#9CA3AF]">
-                                                {group.name}
-                                            </p>
-                                        )}
-                                        {group.categories.map((cat) => {
-                                            const isActive = activeCategoryId === cat.id;
-                                            return (
-                                                <button
-                                                    key={cat.id}
-                                                    type="button"
-                                                    onClick={() => scrollToCategory(cat.id)}
-                                                    className={`mb-2 flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-[15px] ${
-                                                        isActive ? "bg-[#F0FDF4] text-[#166534]" : "text-[#374151]"
-                                                    }`}
-                                                >
-                                                    <div className="flex min-w-0 items-center gap-3">
-                                                        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#F3F4F6] text-[13px] font-semibold text-[#6B7280]">
-                                                            {cat.image_url ? (
-                                                                <img
-                                                                    src={cat.image_url}
-                                                                    alt={cat.name}
-                                                                    className="h-full w-full object-cover"
-                                                                    loading="lazy"
-                                                                    decoding="async"
-                                                                />
-                                                            ) : (
-                                                                <span>{cat.name.charAt(0).toUpperCase()}</span>
-                                                            )}
-                                                        </div>
-                                                        <span className="truncate">{cat.name}</span>
+                            {menuGroups.map((group) => (
+                                <div key={group.id} className="mb-5 last:mb-0">
+                                    {group.name && (
+                                        <p className="mb-2 px-1 text-[12px] font-semibold uppercase tracking-[0.18em] text-[#9CA3AF]">
+                                            {group.name}
+                                        </p>
+                                    )}
+                                    {group.categories.map((cat) => {
+                                        const isActive = activeCategoryId === cat.id;
+                                        return (
+                                            <button
+                                                key={cat.id}
+                                                type="button"
+                                                onClick={() => scrollToCategory(cat.id)}
+                                                className={`mb-2 flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-[15px] ${
+                                                    isActive ? "bg-[#F0FDF4] text-[#166534]" : "text-[#374151]"
+                                                }`}
+                                            >
+                                                <div className="flex min-w-0 items-center gap-3">
+                                                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#F3F4F6] text-[13px] font-semibold text-[#6B7280]">
+                                                        {cat.image_url ? (
+                                                            <img
+                                                                src={cat.image_url}
+                                                                alt={cat.name}
+                                                                className="h-full w-full object-cover"
+                                                                loading="lazy"
+                                                                decoding="async"
+                                                            />
+                                                        ) : (
+                                                            <span>{cat.name.charAt(0).toUpperCase()}</span>
+                                                        )}
                                                     </div>
-                                                    <ChevronDown className={`h-4 w-4 -rotate-90 ${isActive ? "opacity-100" : "opacity-0"}`} />
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                ))
-                            )}
+                                                    <span className="truncate">{cat.name}</span>
+                                                </div>
+                                                <ChevronDown className={`h-4 w-4 -rotate-90 ${isActive ? "opacity-100" : "opacity-0"}`} />
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </>
@@ -1069,12 +1006,6 @@ const Menu: React.FC = () => {
                 </>
             )}
 
-            <CheckoutDrawer
-                isOpen={isCheckoutOpen}
-                onClose={() => setIsCheckoutOpen(false)}
-                orderType={orderType}
-                onOrderTypeChange={setOrderType}
-            />
         </>
     );
 };

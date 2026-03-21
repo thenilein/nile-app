@@ -29,7 +29,7 @@ export default defineConfig(({ mode }) => {
                             return "vendor-supabase";
                         }
 
-                        if (id.includes("leaflet") || id.includes("react-leaflet")) {
+                        if (id.includes("mapbox-gl")) {
                             return "vendor-maps";
                         }
 

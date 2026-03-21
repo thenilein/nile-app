@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Search, X, Loader2 } from "lucide-react";
 import { useLocation } from "../context/LocationContext.tsx";
+import { mapboxForwardGeocode } from "../lib/mapboxGeocoding.ts";
 
 interface Suggestion {
     displayName: string;
@@ -27,40 +28,14 @@ function highlightMatch(text: string, query: string) {
 
 async function fetchSuggestions(query: string): Promise<Suggestion[]> {
     if (query.trim().length < 2) return [];
-    const url = new URL("https://nominatim.openstreetmap.org/search");
-    url.searchParams.set("q", `${query}, Tamil Nadu`);
-    url.searchParams.set("countrycodes", "in");
-    url.searchParams.set("addressdetails", "1");
-    url.searchParams.set("format", "json");
-    url.searchParams.set("limit", "8");
-
-    const res = await fetch(url.toString(), { headers: { "Accept-Language": "en" } });
-    if (!res.ok) return [];
-    const data = await res.json();
-
-    const results: Suggestion[] = [];
-    const seen = new Set<string>();
-
-    for (const item of data) {
-        const addr = item.address || {};
-        const state: string = addr.state || "";
-        if (state.toLowerCase() !== "tamil nadu") continue;
-
-        const city: string =
-            addr.city || addr.town || addr.village || addr.county || addr.suburb || "";
-        const displayName = city ? `${city}, Tamil Nadu` : `${item.display_name}`;
-        if (seen.has(displayName)) continue;
-        seen.add(displayName);
-
-        results.push({
-            displayName,
-            city,
-            state: "Tamil Nadu",
-            latitude: parseFloat(item.lat),
-            longitude: parseFloat(item.lon),
-        });
-    }
-    return results;
+    const rows = await mapboxForwardGeocode(query, 8);
+    return rows.map((r) => ({
+        displayName: r.displayName,
+        city: r.city,
+        state: r.state,
+        latitude: r.latitude,
+        longitude: r.longitude,
+    }));
 }
 
 export const LocationSearch: React.FC = () => {

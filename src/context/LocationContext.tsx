@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useState, useEffect } from "react";
 import { supabase } from "../lib/supabase.ts";
-import { useAuth } from "./AuthContext.tsx";
+import { mapboxReverseGeocode } from "../lib/mapboxGeocoding.ts";
 
 export interface Outlet {
     id: string;
@@ -39,30 +39,21 @@ const LocationContext = createContext<LocationContextType | undefined>(undefined
 
 async function reverseGeocode(lat: number, lon: number): Promise<LocationData | null> {
     try {
-        const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&addressdetails=1`,
-            { headers: { "Accept-Language": "en" } }
-        );
-        if (!res.ok) return null;
-        const data = await res.json();
-        const addr = data.address || {};
-        const city =
-            addr.city ||
-            addr.town ||
-            addr.village ||
-            addr.county ||
-            addr.suburb ||
-            "";
-        const state = addr.state || "";
-        const displayName = city && state ? `${city}, ${state}` : data.display_name || "";
-        return { latitude: lat, longitude: lon, city, state, displayName };
+        const s = await mapboxReverseGeocode(lat, lon);
+        if (!s) return null;
+        return {
+            latitude: lat,
+            longitude: lon,
+            city: s.city,
+            state: s.state,
+            displayName: s.displayName,
+        };
     } catch {
         return null;
     }
 }
 
 export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const { user } = useAuth();
     const [locationData, setLocationDataState] = useState<LocationData | null>(() => {
         try {
             const cached = localStorage.getItem("nile_location");
@@ -136,29 +127,11 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         fetchNearestOutlet();
     }, [locationData]);
 
-    // Save location to DB
-    const saveAddressToDB = async (data: LocationData) => {
-        try {
-            await supabase.from("addresses").insert({
-                user_id: user?.id || null,
-                latitude: data.latitude,
-                longitude: data.longitude,
-                city: data.city,
-                state: data.state,
-                district: data.city,
-                formatted_address: data.displayName
-            });
-        } catch (e) {
-            console.error("Error saving address:", e);
-        }
-    };
-
     const setLocationData = useCallback((data: LocationData) => {
         setLocationDataState(data);
         setLocationError(null);
         localStorage.setItem("nile_location", JSON.stringify(data));
-        saveAddressToDB(data);
-    }, [user]);
+    }, []);
 
     const clearLocation = useCallback(() => {
         setLocationDataState(null);
@@ -167,6 +140,11 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setIsServiceable(false);
         localStorage.removeItem("nile_location");
         localStorage.removeItem("nile_outlet_id");
+        try {
+            sessionStorage.removeItem("nile_mapbox_label_sync");
+        } catch {
+            /* ignore */
+        }
     }, []);
 
     const getCurrentLocation = useCallback(() => {
