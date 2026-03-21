@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, MapPin, Store, Truck, X } from "lucide-react";
+import { ChevronDown, MapPin, Store, Truck, User, X } from "lucide-react";
 import { motion } from "framer-motion";
 import { supabase } from "../lib/supabase.ts";
 import { useLocation } from "../context/LocationContext.tsx";
@@ -7,9 +7,11 @@ import MenuSidebar from "../components/MenuSidebar.tsx";
 import MenuItemCard, { Product } from "../components/MenuItemCard.tsx";
 import CartPanel from "../components/CartPanel.tsx";
 import PromoBanner from "../components/PromoBanner.tsx";
-import MenuSearch from "../components/MenuSearch.tsx";
+import MenuSearch, { VegOnlyToggle } from "../components/MenuSearch.tsx";
 import CheckoutDrawer from "../components/CheckoutDrawer.tsx";
 import LocationSearch from "../components/LocationSearch.tsx";
+import AuthModal from "../components/AuthModal.tsx";
+import { useAuth } from "../context/AuthContext.tsx";
 
 interface Category {
     id: string;
@@ -85,6 +87,7 @@ async function fetchTopMenus(): Promise<TopMenu[]> {
 
 const Menu: React.FC = () => {
     const { locationData, nearestOutlet, getCurrentLocation } = useLocation();
+    const { user, signOut } = useAuth();
 
     const [categories, setCategories] = useState<Category[]>([]);
     const [menus, setMenus] = useState<TopMenu[]>([]);
@@ -101,6 +104,7 @@ const Menu: React.FC = () => {
     const [isCategoryDrawerOpen, setIsCategoryDrawerOpen] = useState(false);
     const [mobileNavigatorView, setMobileNavigatorView] = useState<"menus" | "categories">("menus");
     const [isLocationPickerOpen, setIsLocationPickerOpen] = useState(false);
+    const [isAccountSheetOpen, setIsAccountSheetOpen] = useState(false);
 
     const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -112,8 +116,10 @@ const Menu: React.FC = () => {
     const overlayOpenRef = useRef(false);
 
     useEffect(() => {
-        overlayOpenRef.current = Boolean(isCheckoutOpen || isCategoryDrawerOpen || isLocationPickerOpen);
-    }, [isCheckoutOpen, isCategoryDrawerOpen, isLocationPickerOpen]);
+        overlayOpenRef.current = Boolean(
+            isCheckoutOpen || isCategoryDrawerOpen || isLocationPickerOpen || isAccountSheetOpen
+        );
+    }, [isCheckoutOpen, isCategoryDrawerOpen, isLocationPickerOpen, isAccountSheetOpen]);
 
     useEffect(() => {
         const handleOpenCheckout = () => {
@@ -378,8 +384,80 @@ const Menu: React.FC = () => {
     }, [isLocationPickerOpen, locationKey]);
 
     const storeName = nearestOutlet?.name || "Nile Ice Creams";
-    const storeMeta = nearestOutlet?.address || locationData?.displayName || "Freshly scooped favourites near you";
-    const locationLabel = locationData?.displayName || nearestOutlet?.city || "Choose your delivery location";
+    // User-visible subtitle should reflect the user's selected location, not the outlet address.
+    const storeMeta = locationData?.displayName || "Freshly scooped favourites near you";
+
+    const LOCATION_PLACEHOLDER = "Choose your delivery location";
+
+    const { locationCityLine, locationAddressLine } = useMemo(() => {
+        const stripRedundantCityFromAddress = (city: string, addr: string): string => {
+            const c = city.trim();
+            const a = addr.trim();
+            if (!c || !a || city === LOCATION_PLACEHOLDER) return addr;
+            const cLow = c.toLowerCase();
+            const aLow = a.toLowerCase();
+            if (aLow === cLow) return "";
+            if (!aLow.startsWith(cLow)) return a;
+            let rest = a.slice(c.length).trim();
+            rest = rest.replace(/^([,;\-–—]\s*)+/, "").trim();
+            if (!rest || rest.toLowerCase() === cLow) return "";
+            return rest;
+        };
+
+        const outlet = nearestOutlet;
+        const loc = locationData;
+        const dn = loc?.displayName?.trim() || "";
+        const outletNameLower = outlet?.name?.trim().toLowerCase() || "";
+        const dnLower = dn.toLowerCase();
+
+        let city =
+            loc?.city?.trim() ||
+            outlet?.city?.trim() ||
+            "";
+        if (!city && dn.includes(",")) {
+            city = dn.split(",")[0]?.trim() || "";
+        }
+
+        // Single-line displayName is usually a full label or venue — not the city row.
+        // For address, prefer the user's selected location (`locationData`), not outlet address.
+        let addressLine = "";
+        if (loc && dn) {
+            if (dn.includes(",")) {
+                const escaped = city.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                const rest =
+                    city && dn
+                        ? dn.replace(new RegExp(`^${escaped}\\s*,\\s*`, "i"), "").trim()
+                        : dn.split(",").slice(1).join(",").trim();
+                addressLine = (rest && rest.toLowerCase() !== city.toLowerCase() ? rest : "") || loc.state?.trim() || "";
+            } else if (!outletNameLower || dnLower !== outletNameLower) {
+                // Avoid showing outlet/shop title as "address" when displayName is just a venue name.
+                addressLine = dn;
+            }
+        } else if (outlet?.address) {
+            addressLine = outlet.address;
+        }
+
+        let cityLine = city || LOCATION_PLACEHOLDER;
+        if (outletNameLower && cityLine.toLowerCase() === outletNameLower) {
+            cityLine = outlet?.city?.trim() || LOCATION_PLACEHOLDER;
+        }
+
+        addressLine = stripRedundantCityFromAddress(cityLine, addressLine);
+
+        return { locationCityLine: cityLine, locationAddressLine: addressLine };
+    }, [locationData, nearestOutlet]);
+
+    const hideStoreTitleRow = useMemo(() => {
+        if (locationCityLine === LOCATION_PLACEHOLDER) return false;
+        return storeName.trim().toLowerCase() === locationCityLine.trim().toLowerCase();
+    }, [storeName, locationCityLine]);
+
+    const showStoreSubtitle = useMemo(() => {
+        const a = storeMeta?.trim().toLowerCase();
+        const b = locationAddressLine?.trim().toLowerCase();
+        if (a && b && a === b) return false;
+        return true;
+    }, [storeMeta, locationAddressLine]);
 
     const menuViewportRef = useRef<HTMLDivElement>(null);
 
@@ -425,42 +503,36 @@ const Menu: React.FC = () => {
                 transition={{ duration: 0.3 }}
                 className="flex min-h-0 flex-1 flex-col bg-white md:h-[100dvh] md:overflow-hidden"
             >
-                <div className="border-b border-[#E5E7EB] bg-white px-4 pb-5 pt-3 md:hidden">
-                    <button
-                        type="button"
-                        onClick={openLocationPicker}
-                        className="mb-4 flex w-full items-center gap-2 text-left text-[14px] text-[#374151]"
-                    >
-                        <MapPin className="h-4 w-4 flex-shrink-0 text-[#111827]" />
-                        <span className="truncate">{locationLabel}</span>
-                        <ChevronDown className="ml-auto h-4 w-4 flex-shrink-0" />
-                    </button>
-
-                    <div className="mb-4 flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                            <h1 className="truncate text-[28px] font-semibold leading-none text-[#111827]">{storeName}</h1>
-                            <p className="mt-1 truncate text-[14px] text-[#6B7280]">{storeMeta}</p>
-                        </div>
+                <div className="border-b border-[#E5E7EB] bg-white px-4 pb-4 pt-3 md:hidden">
+                    <div className="flex items-start gap-3">
                         <button
                             type="button"
-                            onClick={() => setOrderType((current) => current === "delivery" ? "pickup" : "delivery")}
-                            className="flex h-11 items-center gap-2 rounded-xl border border-[#E5E7EB] bg-white px-4 text-[15px] font-medium text-[#374151]"
+                            onClick={openLocationPicker}
+                            className="flex min-w-0 flex-1 items-start gap-2 rounded-xl py-0.5 text-left transition-colors active:bg-gray-50"
                         >
-                            <span>{orderType === "delivery" ? "Delivery" : "Pickup"}</span>
-                            <ChevronDown className="h-4 w-4" />
+                            <MapPin className="mt-1 h-4 w-4 flex-shrink-0 text-[#111827]" />
+                            <div className="min-w-0 flex-1">
+                                <div className="flex min-w-0 items-center gap-0.5">
+                                    <span className="truncate text-[15px] font-semibold leading-snug text-[#111827]">
+                                        {locationCityLine}
+                                    </span>
+                                    <ChevronDown className="h-4 w-4 flex-shrink-0 text-[#6B7280]" aria-hidden />
+                                </div>
+                                {locationAddressLine ? (
+                                    <p className="mt-0.5 line-clamp-2 text-[13px] leading-snug text-[#6B7280]">
+                                        {locationAddressLine}
+                                    </p>
+                                ) : null}
+                            </div>
                         </button>
-                    </div>
-
-                    <MenuSearch
-                        query={searchQuery}
-                        onQueryChange={setSearchQuery}
-                        vegOnly={vegOnly}
-                        onVegToggle={() => setVegOnly((v) => !v)}
-                        className="flex-col items-stretch"
-                    />
-
-                    <div className="mt-4 md:hidden">
-                        <PromoBanner />
+                        <button
+                            type="button"
+                            onClick={() => setIsAccountSheetOpen(true)}
+                            aria-label={user ? "Account" : "Log in"}
+                            className="mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-[#E5E7EB] bg-white text-[#111827] shadow-sm transition-transform active:scale-95"
+                        >
+                            <User className="h-5 w-5" strokeWidth={2} />
+                        </button>
                     </div>
                 </div>
 
@@ -473,54 +545,83 @@ const Menu: React.FC = () => {
                                 </div>
                             </div>
                             <div className="min-w-0">
-                                <h1 className="truncate text-[32px] font-semibold leading-none text-[#111827]">{storeName}</h1>
-                                <p className="mt-1 truncate text-[14px] text-[#6B7280]">{storeMeta}</p>
+                                {!hideStoreTitleRow ? (
+                                    <h1 className="truncate text-[32px] font-semibold leading-none text-[#111827]">{storeName}</h1>
+                                ) : null}
+                                {showStoreSubtitle ? (
+                                    <p
+                                        className={`truncate text-[14px] text-[#6B7280] ${hideStoreTitleRow ? "" : "mt-1"}`}
+                                    >
+                                        {storeMeta}
+                                    </p>
+                                ) : null}
                             </div>
                         </div>
 
-                        <div className="flex min-w-0 flex-[1.15] items-center justify-center gap-3">
-                            <div className="flex items-center gap-0 bg-[#F3F4F6] p-1 rounded-xl">
-                                <button
-                                    type="button"
-                                    onClick={() => setOrderType("delivery")}
-                                    className={`flex h-11 items-center gap-2 rounded-xl px-5 text-[14px] font-medium transition-colors ${
-                                        orderType === "delivery" ? "bg-white text-[#166534] shadow-sm" : "text-[#374151] hover:text-[#166534]"
-                                    }`}
-                                >
-                                    <Truck className="h-4 w-4" />
-                                    Delivery
-                                </button>
-                                <div className="w-px h-7 bg-[#E5E7EB]" />
-                                <button
-                                    type="button"
-                                    onClick={() => setOrderType("pickup")}
-                                    className={`flex h-11 items-center gap-2 rounded-xl px-5 text-[14px] font-medium transition-colors ${
-                                        orderType === "pickup" ? "bg-white text-[#166534] shadow-sm" : "text-[#374151] hover:text-[#166534]"
-                                    }`}
-                                >
-                                    <Store className="h-4 w-4" />
-                                    Pickup
-                                </button>
-                            </div>
+                        <div className="flex min-w-0 flex-[1.15] items-center justify-center">
                             <button
                                 type="button"
                                 onClick={openLocationPicker}
-                                className="flex min-w-0 items-center gap-2 rounded-xl border border-[#E5E7EB] px-5 py-3 text-[14px] text-[#374151]"
+                                className="flex min-w-0 max-w-full items-start gap-3 rounded-xl border border-[#E5E7EB] px-5 py-3 text-left text-[14px] text-[#374151]"
                             >
-                                <MapPin className="h-4 w-4 flex-shrink-0 text-[#111827]" />
-                                <span className="truncate">{locationLabel}</span>
-                                <ChevronDown className="h-4 w-4 flex-shrink-0" />
+                                <MapPin className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#111827]" />
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex min-w-0 items-center gap-0.5">
+                                        <span className="truncate font-semibold text-[#111827]">{locationCityLine}</span>
+                                        <ChevronDown className="h-4 w-4 flex-shrink-0 text-[#6B7280]" aria-hidden />
+                                    </div>
+                                    {locationAddressLine ? (
+                                        <p className="mt-0.5 line-clamp-2 text-[13px] leading-snug text-[#6B7280]">
+                                            {locationAddressLine}
+                                        </p>
+                                    ) : null}
+                                </div>
                             </button>
                         </div>
 
-                        <div className="flex min-w-0 flex-1 items-center justify-end">
+                        <div className="flex min-w-0 flex-1 flex-col items-stretch justify-center gap-2">
                             <MenuSearch
                                 query={searchQuery}
                                 onQueryChange={setSearchQuery}
                                 vegOnly={vegOnly}
                                 onVegToggle={() => setVegOnly((v) => !v)}
-                                className="w-full max-w-[520px]"
+                                hideVeg
+                                className="w-full max-w-[520px] self-end"
                             />
+                            <div className="flex w-full max-w-[520px] items-center justify-between gap-3 self-end">
+                                <div className="flex min-w-0 flex-1 items-center gap-0 rounded-xl bg-[#F3F4F6] p-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => setOrderType("delivery")}
+                                        className={`flex h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-3 text-[13px] font-medium transition-colors sm:h-11 sm:gap-2 sm:rounded-xl sm:px-5 sm:text-[14px] ${
+                                            orderType === "delivery"
+                                                ? "bg-white text-[#166534] shadow-sm"
+                                                : "text-[#374151] hover:text-[#166534]"
+                                        }`}
+                                    >
+                                        <Truck className="h-4 w-4 flex-shrink-0" />
+                                        <span className="truncate">Delivery</span>
+                                    </button>
+                                    <div className="h-6 w-px flex-shrink-0 bg-[#E5E7EB] sm:h-7" />
+                                    <button
+                                        type="button"
+                                        onClick={() => setOrderType("pickup")}
+                                        className={`flex h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-3 text-[13px] font-medium transition-colors sm:h-11 sm:gap-2 sm:rounded-xl sm:px-5 sm:text-[14px] ${
+                                            orderType === "pickup"
+                                                ? "bg-white text-[#166534] shadow-sm"
+                                                : "text-[#374151] hover:text-[#166534]"
+                                        }`}
+                                    >
+                                        <Store className="h-4 w-4 flex-shrink-0" />
+                                        <span className="truncate">Pickup</span>
+                                    </button>
+                                </div>
+                                <VegOnlyToggle
+                                    vegOnly={vegOnly}
+                                    onVegToggle={() => setVegOnly((v) => !v)}
+                                    className="flex-shrink-0"
+                                />
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -538,28 +639,74 @@ const Menu: React.FC = () => {
 
                     <div
                         ref={scrollContainerRef}
-                        className="flex-1 min-h-0 min-w-0 overflow-y-auto overscroll-contain bg-transparent px-4 pb-28 pt-6 md:px-8 md:pb-10 md:pt-4 xl:pr-10 menu-scrollbar-hide"
+                        className="flex-1 min-h-0 min-w-0 overflow-y-auto overscroll-contain bg-transparent px-4 pb-28 pt-0 md:px-8 md:pb-10 md:pt-4 xl:pr-10 menu-scrollbar-hide"
                     >
-                        {loading ? (
-                            <>
-                                <div className="hidden md:block">
-                                    <div className="h-[248px] rounded-[24px] bg-gray-100" />
+                        <div className="sticky top-0 z-20 -mx-4 border-b border-[#E5E7EB] bg-white px-4 pb-3 pt-3 shadow-[0_8px_16px_-8px_rgba(15,23,42,0.12)] md:hidden">
+                            <MenuSearch
+                                query={searchQuery}
+                                onQueryChange={setSearchQuery}
+                                vegOnly={vegOnly}
+                                onVegToggle={() => setVegOnly((v) => !v)}
+                                hideVeg
+                                className="w-full"
+                            />
+                            <div className="mt-2 flex items-center justify-between gap-2">
+                                <div className="flex min-w-0 flex-1 items-center gap-0 rounded-xl bg-[#F3F4F6] p-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => setOrderType("delivery")}
+                                        className={`flex h-10 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg px-2 text-[12px] font-semibold transition-colors ${
+                                            orderType === "delivery"
+                                                ? "bg-white text-[#166534] shadow-sm"
+                                                : "text-[#374151]"
+                                        }`}
+                                    >
+                                        <Truck className="h-3.5 w-3.5 flex-shrink-0" />
+                                        <span className="truncate">Delivery</span>
+                                    </button>
+                                    <div className="h-5 w-px flex-shrink-0 bg-[#E5E7EB]" />
+                                    <button
+                                        type="button"
+                                        onClick={() => setOrderType("pickup")}
+                                        className={`flex h-10 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg px-2 text-[12px] font-semibold transition-colors ${
+                                            orderType === "pickup"
+                                                ? "bg-white text-[#166534] shadow-sm"
+                                                : "text-[#374151]"
+                                        }`}
+                                    >
+                                        <Store className="h-3.5 w-3.5 flex-shrink-0" />
+                                        <span className="truncate">Pickup</span>
+                                    </button>
                                 </div>
-                                {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
-                            </>
-                        ) : error ? (
-                            <div className="flex flex-col items-center justify-center py-20 text-center">
-                                <div className="mb-4 h-12 w-12 rounded-full bg-[#F3F4F6]" />
-                                <p className="font-semibold text-gray-700">{error}</p>
+                                <VegOnlyToggle
+                                    vegOnly={vegOnly}
+                                    onVegToggle={() => setVegOnly((v) => !v)}
+                                    className="flex-shrink-0"
+                                />
                             </div>
-                        ) : (
-                            <>
-                                <div className="hidden md:block">
-                                    <PromoBanner />
-                                </div>
+                        </div>
 
-                                {displayedMenuGroups.map((group) => (
-                                    <section key={group.id} className="mt-8 first:mt-0 md:mt-10">
+                        <div className="mt-4 md:mt-0">
+                            {loading ? (
+                                <>
+                                    <div className="hidden md:block">
+                                        <div className="h-[248px] rounded-[24px] bg-gray-100" />
+                                    </div>
+                                    {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
+                                </>
+                            ) : error ? (
+                                <div className="flex flex-col items-center justify-center py-20 text-center">
+                                    <div className="mb-4 h-12 w-12 rounded-full bg-[#F3F4F6]" />
+                                    <p className="font-semibold text-gray-700">{error}</p>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="mb-4">
+                                        <PromoBanner />
+                                    </div>
+
+                                    {displayedMenuGroups.map((group) => (
+                                        <section key={group.id} className="mt-8 first:mt-0 md:mt-10">
                                         {group.name && (
                                             <div className="mb-4 border-b border-[#E5E7EB] pb-3 md:mb-6">
                                                 <h2 className="text-[22px] font-semibold text-[#111827] md:text-[30px]">
@@ -590,20 +737,21 @@ const Menu: React.FC = () => {
                                                 </section>
                                             );
                                         })}
-                                    </section>
-                                ))}
+                                        </section>
+                                    ))}
 
-                                {filteredProducts.length === 0 && (
-                                    <div className="flex flex-col items-center justify-center py-20 text-center">
-                                        <div className="mb-4 h-12 w-12 rounded-full bg-[#F3F4F6]" />
-                                        <p className="mb-1 font-semibold text-gray-700">No items found</p>
-                                        <p className="text-sm text-gray-400">Try a different search or remove filters</p>
-                                    </div>
-                                )}
+                                    {filteredProducts.length === 0 && (
+                                        <div className="flex flex-col items-center justify-center py-20 text-center">
+                                            <div className="mb-4 h-12 w-12 rounded-full bg-[#F3F4F6]" />
+                                            <p className="mb-1 font-semibold text-gray-700">No items found</p>
+                                            <p className="text-sm text-gray-400">Try a different search or remove filters</p>
+                                        </div>
+                                    )}
 
-                                <div className="h-8 xl:h-0" />
-                            </>
-                        )}
+                                    <div className="h-8 xl:h-0" />
+                                </>
+                            )}
+                        </div>
                     </div>
 
                     <CartPanel
@@ -857,6 +1005,65 @@ const Menu: React.FC = () => {
                                     Use my current GPS location
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </>
+            )}
+
+            <AuthModal
+                isOpen={isAccountSheetOpen && !user}
+                onClose={() => setIsAccountSheetOpen(false)}
+                variant="bottomSheet"
+            />
+
+            {isAccountSheetOpen && user && (
+                <>
+                    <button
+                        type="button"
+                        aria-label="Close account"
+                        onClick={() => setIsAccountSheetOpen(false)}
+                        className="fixed inset-0 z-[130] bg-black/40 backdrop-blur-sm"
+                    />
+                    <div
+                        className="fixed inset-x-0 bottom-0 z-[140] flex flex-col rounded-t-[28px] border-t border-[#E5E7EB] bg-white shadow-[0_-18px_48px_rgba(15,23,42,0.18)]"
+                        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 1.25rem)" }}
+                    >
+                        <div className="flex justify-center pt-3 pb-2">
+                            <div className="h-1.5 w-12 rounded-full bg-gray-200" />
+                        </div>
+                        <div className="flex items-center justify-between px-5 pb-2">
+                            <h2 className="text-[18px] font-semibold text-[#111827]">Account</h2>
+                            <button
+                                type="button"
+                                onClick={() => setIsAccountSheetOpen(false)}
+                                className="rounded-full p-2 text-gray-500 hover:bg-gray-100"
+                                aria-label="Close"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+                        <div className="px-5 pb-4">
+                            <p className="text-[14px] text-[#6B7280]">
+                                Signed in as{" "}
+                                <span className="font-medium text-[#111827]">
+                                    {user.phone ||
+                                        (user.user_metadata?.phone as string | undefined) ||
+                                        user.email ||
+                                        "Member"}
+                                </span>
+                            </p>
+                        </div>
+                        <div className="px-5">
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    await signOut();
+                                    setIsAccountSheetOpen(false);
+                                }}
+                                className="w-full rounded-xl border border-red-200 bg-red-50 py-3.5 text-[15px] font-semibold text-red-700 transition-colors hover:bg-red-100"
+                            >
+                                Sign out
+                            </button>
                         </div>
                     </div>
                 </>

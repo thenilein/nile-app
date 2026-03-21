@@ -13,9 +13,12 @@ import {
 type AuthModalProps = {
   isOpen: boolean;
   onClose: () => void;
+  /** Full-screen centered modal (default) or mobile-style bottom sheet */
+  variant?: "centered" | "bottomSheet";
 };
 
-const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
+const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, variant = "centered" }) => {
+  const isSheet = variant === "bottomSheet";
   // Form State
   const [phone, setPhone] = useState("");
   const [fullName, setFullName] = useState("");
@@ -186,6 +189,15 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     exit: { scale: 0.95, opacity: 0, transition: { duration: 0.2 } },
   };
 
+  const sheetVariants: Variants = {
+    hidden: { y: "100%" },
+    visible: {
+      y: 0,
+      transition: { type: "spring", damping: 28, stiffness: 320 },
+    },
+    exit: { y: "100%", transition: { duration: 0.22, ease: [0.4, 0, 1, 1] } },
+  };
+
   const stepVariants: Variants = {
     enter: (direction: number) => ({
       x: direction > 0 ? 50 : -50,
@@ -211,7 +223,9 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div
+          className={`fixed inset-0 flex ${isSheet ? "z-[130] items-end justify-stretch" : "z-50 items-center justify-center p-4"}`}
+        >
           {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
@@ -244,23 +258,41 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             )}
           </AnimatePresence>
 
-          {/* Modal */}
+          {/* Modal / bottom sheet */}
           <motion.div
-            variants={modalVariants}
+            variants={isSheet ? sheetVariants : modalVariants}
             initial="hidden"
             animate="visible"
             exit="exit"
-            className="relative w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden"
+            className={`relative z-10 w-full overflow-hidden bg-white shadow-xl ${
+              isSheet
+                ? "max-h-[min(92dvh,820px)] rounded-t-[28px] border-t border-[#E5E7EB]"
+                : "max-w-md rounded-2xl"
+            }`}
+            style={isSheet ? { paddingBottom: "env(safe-area-inset-bottom)" } : undefined}
           >
+            {isSheet && (
+              <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
+                <div className="h-1.5 w-12 rounded-full bg-gray-200" />
+              </div>
+            )}
             {/* Close button */}
             <button
               onClick={handleClose}
-              className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors z-10"
+              className={`absolute p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors z-10 ${
+                isSheet ? "top-3 right-3" : "top-4 right-4"
+              }`}
             >
               <X className="w-5 h-5" />
             </button>
 
-            <div className="p-8 pb-10 min-h-[460px] relative overflow-hidden flex flex-col">
+            <div
+              className={`relative flex flex-col overflow-hidden ${
+                isSheet
+                  ? "max-h-[min(calc(92dvh-48px),780px)] min-h-0 overflow-y-auto px-6 pb-8 pt-2"
+                  : "min-h-[460px] p-8 pb-10"
+              }`}
+            >
               <AnimatePresence mode="wait" custom={step === "phone" ? -1 : 1}>
                 {step === "phone" ? (
                   <motion.div

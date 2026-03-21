@@ -1,12 +1,44 @@
 import React from "react";
 import { Search, X } from "lucide-react";
 
+export const VegOnlyToggle: React.FC<{
+    vegOnly: boolean;
+    onVegToggle: () => void;
+    className?: string;
+}> = ({ vegOnly, onVegToggle, className = "" }) => (
+    <button
+        type="button"
+        onClick={onVegToggle}
+        aria-pressed={vegOnly}
+        className={`flex h-11 flex-shrink-0 items-center gap-3 rounded-xl border px-4 text-[14px] font-medium transition-colors ${
+            vegOnly
+                ? "border-[#166534] bg-[#F0FDF4] text-[#166534]"
+                : "border-[#E5E7EB] bg-white text-gray-700"
+        } ${className}`}
+    >
+        <span className="whitespace-nowrap">Veg only</span>
+        <span
+            className={`relative h-5 w-9 rounded-full transition-colors ${
+                vegOnly ? "bg-[#166534]" : "bg-gray-300"
+            }`}
+        >
+            <span
+                className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
+                    vegOnly ? "translate-x-[18px]" : "translate-x-0.5"
+                }`}
+            />
+        </span>
+    </button>
+);
+
 interface MenuSearchProps {
     query: string;
     onQueryChange: (q: string) => void;
     vegOnly: boolean;
     onVegToggle: () => void;
     className?: string;
+    /** When true, only the search field is rendered (veg toggle shown separately). */
+    hideVeg?: boolean;
 }
 
 const MenuSearch: React.FC<MenuSearchProps> = ({
@@ -15,6 +47,7 @@ const MenuSearch: React.FC<MenuSearchProps> = ({
     vegOnly,
     onVegToggle,
     className = "",
+    hideVeg = false,
 }) => {
     return (
         <div className={`flex items-center gap-3 ${className}`}>
@@ -39,29 +72,7 @@ const MenuSearch: React.FC<MenuSearchProps> = ({
                 )}
             </div>
 
-            <button
-                type="button"
-                onClick={onVegToggle}
-                aria-pressed={vegOnly}
-                className={`flex h-11 flex-shrink-0 items-center gap-3 rounded-xl border px-4 text-[14px] font-medium transition-colors ${
-                    vegOnly
-                        ? "border-[#166534] bg-[#F0FDF4] text-[#166534]"
-                        : "border-[#E5E7EB] bg-white text-gray-700"
-                }`}
-            >
-                <span className="whitespace-nowrap">Veg only</span>
-                <span
-                    className={`relative h-5 w-9 rounded-full transition-colors ${
-                        vegOnly ? "bg-[#166534]" : "bg-gray-300"
-                    }`}
-                >
-                    <span
-                        className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
-                            vegOnly ? "translate-x-[18px]" : "translate-x-0.5"
-                        }`}
-                    />
-                </span>
-            </button>
+            {!hideVeg && <VegOnlyToggle vegOnly={vegOnly} onVegToggle={onVegToggle} />}
         </div>
     );
 };
