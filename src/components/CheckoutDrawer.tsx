@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Truck, Store, Banknote, CreditCard, Wallet, Smartphone, ShieldCheck, Navigation, AlertCircle, CheckCircle2, ChevronLeft, Loader2, MapPin } from 'lucide-react';
 import { CouponSection } from './CouponSection';
@@ -8,7 +8,11 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { useLocation } from '../context/LocationContext';
-import { CheckoutDeliveryMap, DEFAULT_CHECKOUT_MAP_CENTER } from './CheckoutDeliveryMap.tsx';
+import { DEFAULT_CHECKOUT_MAP_CENTER } from '../lib/checkoutMapConstants.ts';
+
+const CheckoutDeliveryMap = lazy(() =>
+    import('./CheckoutDeliveryMap.tsx').then((m) => ({ default: m.CheckoutDeliveryMap })),
+);
 import { mapboxReverseGeocode, mergeFormattedAddress } from '../lib/mapboxGeocoding.ts';
 import { findMatchingSavedAddress } from '../lib/addressCoordMatch.ts';
 import { resolveGpsCoordsToLocationData } from '../lib/resolveGpsToLocationData.ts';
@@ -744,14 +748,22 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
                                                         className="space-y-4 overflow-hidden"
                                                     >
                                                         {mapBootstrap && (
-                                                            <CheckoutDeliveryMap
-                                                                centerLat={mapBootstrap.lat}
-                                                                centerLng={mapBootstrap.lng}
-                                                                onCenterChange={handleMapPositionChange}
-                                                                flyTo={flyToTarget}
-                                                                onFlyToComplete={() => setFlyToTarget(null)}
-                                                                className="h-[260px]"
-                                                            />
+                                                            <Suspense
+                                                                fallback={
+                                                                    <div className="flex h-[260px] items-center justify-center rounded-xl bg-gray-100 text-sm text-gray-500">
+                                                                        <Loader2 className="h-6 w-6 animate-spin text-green-600" />
+                                                                    </div>
+                                                                }
+                                                            >
+                                                                <CheckoutDeliveryMap
+                                                                    centerLat={mapBootstrap.lat}
+                                                                    centerLng={mapBootstrap.lng}
+                                                                    onCenterChange={handleMapPositionChange}
+                                                                    flyTo={flyToTarget}
+                                                                    onFlyToComplete={() => setFlyToTarget(null)}
+                                                                    className="h-[260px]"
+                                                                />
+                                                            </Suspense>
                                                         )}
 
                                                         <button

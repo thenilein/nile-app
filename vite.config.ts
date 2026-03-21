@@ -29,6 +29,8 @@ export default defineConfig(({ mode }) => {
         plugins: [react()],
         build: {
             outDir: 'dist',
+            /** mapbox-gl minifies to ~1.7MB; lazy-loaded but still one chunk */
+            chunkSizeWarningLimit: 1800,
             sourcemap: mode === 'development' || mode === 'test',
             rollupOptions: {
                 output: {

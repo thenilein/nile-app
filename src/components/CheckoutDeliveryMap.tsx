@@ -3,9 +3,6 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { getMapboxAccessToken } from "../lib/mapboxGeocoding.ts";
 
-/** Perambalur area default when no location yet */
-export const DEFAULT_CHECKOUT_MAP_CENTER = { lat: 11.2333, lng: 78.8667 };
-
 export interface CheckoutDeliveryMapProps {
     centerLat: number;
     centerLng: number;

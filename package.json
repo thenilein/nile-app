@@ -15,7 +15,6 @@
     "@supabase/supabase-js": "^2.98.0",
     "canvas-confetti": "^1.9.4",
     "clsx": "^2.1.1",
-    "dotenv": "^17.3.1",
     "framer-motion": "^12.36.0",
     "lucide-react": "^0.577.0",
     "mapbox-gl": "^3.20.0",
@@ -26,14 +25,13 @@
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
-    "@rspack/core": "^1.7.7",
-    "@rspack/plugin-react-refresh": "^1.6.1",
     "@tailwindcss/postcss": "^4.2.1",
     "@types/canvas-confetti": "^1.9.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.4",
     "autoprefixer": "^10.4.27",
+    "dotenv": "^17.3.1",
     "postcss": "^8.5.8",
     "tailwindcss": "^4.2.1",
     "typescript": "^5.9.3",
