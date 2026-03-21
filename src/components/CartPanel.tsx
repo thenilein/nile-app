@@ -547,36 +547,34 @@ const MobileCartDrawer: React.FC<CartPanelProps> = ({
                             onClick={closeDrawer}
                             className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm xl:hidden"
                         />
-                        <motion.div
-                            key="drawer"
-                            initial={{ y: "100%" }}
-                            animate={{ y: 0 }}
-                            exit={{ y: "100%" }}
-                            transition={{ type: "spring", stiffness: 320, damping: 35 }}
-                            drag="y"
-                            dragConstraints={{ top: 0 }}
-                            dragElastic={0.1}
-                            onDragEnd={(_, info) => {
-                                if (info.offset.y > 100) closeDrawer();
-                            }}
-                            className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-[24px] xl:hidden flex flex-col overflow-hidden shadow-[0_-8px_32px_rgba(0,0,0,0.1)]"
-                            style={{ touchAction: "none", height: "75vh" }}
-                        >
-                            {/* Drag handle */}
-                            <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
-                                <div className="w-12 h-1.5 rounded-full bg-gray-200" />
-                            </div>
-                            <div className="flex-1 overflow-hidden">
-                                <CartPanelInner
-                                    orderType={orderType}
-                                    onOrderTypeChange={onOrderTypeChange}
-                                    checkoutActive={checkoutActive}
-                                    setCheckoutActive={setCheckoutActive}
-                                    mobile
-                                    onClose={closeDrawer}
-                                />
-                            </div>
-                        </motion.div>
+                        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center px-3 pb-[max(10px,calc(env(safe-area-inset-bottom)+10px))] xl:hidden">
+                            <motion.div
+                                key="drawer"
+                                initial={{ y: "100%" }}
+                                animate={{ y: 0 }}
+                                exit={{ y: "100%" }}
+                                transition={{ type: "spring", stiffness: 320, damping: 35 }}
+                                drag="y"
+                                dragConstraints={{ top: 0 }}
+                                dragElastic={0.1}
+                                onDragEnd={(_, info) => {
+                                    if (info.offset.y > 100) closeDrawer();
+                                }}
+                                className="pointer-events-auto flex h-[75vh] max-h-[min(90dvh,880px)] w-full max-w-lg flex-col overflow-hidden rounded-[40px] border border-black/[0.08] bg-white shadow-[0_12px_48px_rgba(15,23,42,0.14)] box-border"
+                                style={{ touchAction: "none" }}
+                            >
+                                <div className="flex min-h-0 flex-1 flex-col overflow-hidden pt-2">
+                                    <CartPanelInner
+                                        orderType={orderType}
+                                        onOrderTypeChange={onOrderTypeChange}
+                                        checkoutActive={checkoutActive}
+                                        setCheckoutActive={setCheckoutActive}
+                                        mobile
+                                        onClose={closeDrawer}
+                                    />
+                                </div>
+                            </motion.div>
+                        </div>
                     </>
                 )}
             </AnimatePresence>

@@ -1,6 +1,8 @@
 import React, { createContext, useCallback, useContext, useState, useEffect } from "react";
 import { supabase } from "../lib/supabase.ts";
-import { mapboxReverseGeocode } from "../lib/mapboxGeocoding.ts";
+import { pushLocationRecent } from "../lib/locationRecents.ts";
+import { resolveGpsCoordsToLocationData } from "../lib/resolveGpsToLocationData.ts";
+import { useAuth } from "./AuthContext.tsx";
 
 export interface Outlet {
     id: string;
@@ -37,23 +39,8 @@ interface LocationContextType {
 
 const LocationContext = createContext<LocationContextType | undefined>(undefined);
 
-async function reverseGeocode(lat: number, lon: number): Promise<LocationData | null> {
-    try {
-        const s = await mapboxReverseGeocode(lat, lon);
-        if (!s) return null;
-        return {
-            latitude: lat,
-            longitude: lon,
-            city: s.city,
-            state: s.state,
-            displayName: s.displayName,
-        };
-    } catch {
-        return null;
-    }
-}
-
 export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const { user } = useAuth();
     const [locationData, setLocationDataState] = useState<LocationData | null>(() => {
         try {
             const cached = localStorage.getItem("nile_location");
@@ -131,6 +118,7 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setLocationDataState(data);
         setLocationError(null);
         localStorage.setItem("nile_location", JSON.stringify(data));
+        pushLocationRecent(data);
     }, []);
 
     const clearLocation = useCallback(() => {
@@ -157,19 +145,8 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         navigator.geolocation.getCurrentPosition(
             async (position) => {
                 const { latitude, longitude } = position.coords;
-                const result = await reverseGeocode(latitude, longitude);
-                if (result) {
-                    setLocationData(result);
-                } else {
-                    const fallbackData = {
-                        latitude,
-                        longitude,
-                        city: "",
-                        state: "",
-                        displayName: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
-                    };
-                    setLocationData(fallbackData);
-                }
+                const resolved = await resolveGpsCoordsToLocationData(latitude, longitude, user?.id);
+                setLocationData(resolved);
                 // setIsLoadingLocation is turned off inside the useEffect that catches `locationData` changing
             },
             (error) => {
@@ -190,7 +167,7 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             },
             { timeout: 10000, enableHighAccuracy: true }
         );
-    }, [setLocationData]);
+    }, [setLocationData, user?.id]);
 
     return (
         <LocationContext.Provider

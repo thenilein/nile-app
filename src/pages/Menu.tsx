@@ -8,7 +8,7 @@ import MenuItemCard, { Product } from "../components/MenuItemCard.tsx";
 import CartPanel from "../components/CartPanel.tsx";
 import PromoBanner from "../components/PromoBanner.tsx";
 import MenuSearch, { VegOnlyToggle } from "../components/MenuSearch.tsx";
-import LocationSearch from "../components/LocationSearch.tsx";
+import LocationPickerSheet from "./location/LocationPickerSheet.tsx";
 import AuthModal from "../components/AuthModal.tsx";
 import { useAuth } from "../context/AuthContext.tsx";
 import { useCart } from "../context/CartContext.tsx";
@@ -86,7 +86,7 @@ async function fetchTopMenus(): Promise<TopMenu[]> {
 }
 
 const Menu: React.FC = () => {
-    const { locationData, nearestOutlet, getCurrentLocation } = useLocation();
+    const { locationData, nearestOutlet } = useLocation();
     const { user, signOut } = useAuth();
     const { totalItems } = useCart();
 
@@ -867,85 +867,10 @@ const Menu: React.FC = () => {
                 </>
             )}
 
-            {isLocationPickerOpen && (
-                <>
-                    <button
-                        type="button"
-                        aria-label="Close location picker"
-                        onClick={() => setIsLocationPickerOpen(false)}
-                        className="fixed inset-0 z-[120] bg-black/40 backdrop-blur-sm"
-                    />
-
-                    {/* Desktop: popup */}
-                    <div className="hidden md:block fixed inset-0 z-[130] pointer-events-none">
-                        <div className="absolute inset-0 pointer-events-auto flex items-center justify-center px-6">
-                            <div className="w-full max-w-[640px] rounded-[22px] bg-white shadow-[0_24px_60px_rgba(0,0,0,0.25)] border border-[#E5E7EB]">
-                                <div className="flex items-center justify-between px-6 py-5 border-b border-[#E5E7EB]">
-                                    <div>
-                                        <p className="text-[14px] font-bold text-[#111827]">Change address</p>
-                                        <p className="text-[12px] text-[#6B7280] mt-1">Search for city/locality or use GPS</p>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsLocationPickerOpen(false)}
-                                        className="rounded-full p-2 text-gray-500 hover:bg-gray-100 transition-colors"
-                                        aria-label="Close"
-                                    >
-                                        <X className="h-5 w-5" />
-                                    </button>
-                                </div>
-                                <div className="p-6">
-                                    <LocationSearch />
-                                    <button
-                                        type="button"
-                                        onClick={() => getCurrentLocation()}
-                                        className="mt-4 w-full h-[46px] rounded-xl bg-green-50 hover:bg-green-100 text-green-700 font-bold transition-colors flex items-center justify-center gap-2"
-                                    >
-                                        <MapPin className="h-4 w-4" />
-                                        Use my current GPS location
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Mobile: bottom sheet */}
-                    <div className="md:hidden fixed inset-x-0 bottom-0 z-[130] pointer-events-none">
-                        <div className="pointer-events-auto bg-white rounded-t-[28px] shadow-[0_-18px_48px_rgba(15,23,42,0.18)] border-t border-[#E5E7EB] max-h-[86vh] overflow-hidden flex flex-col"
-                            style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}
-                        >
-                            <div className="flex justify-center pt-3 pb-2 flex-shrink-0">
-                                <div className="w-12 h-1.5 rounded-full bg-gray-200" />
-                            </div>
-                            <div className="px-5 pb-3 flex-shrink-0">
-                                <div className="flex items-center justify-between">
-                                    <h2 className="text-[18px] font-semibold text-[#111827]">Change address</h2>
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsLocationPickerOpen(false)}
-                                        className="rounded-full p-2 text-gray-500 hover:bg-gray-100 transition-colors"
-                                        aria-label="Close"
-                                    >
-                                        <X className="h-5 w-5" />
-                                    </button>
-                                </div>
-                                <p className="text-[12px] text-[#6B7280] mt-1">Search for city/locality or use GPS</p>
-                            </div>
-                            <div className="flex-1 overflow-y-auto px-5 pb-2">
-                                <LocationSearch />
-                                <button
-                                    type="button"
-                                    onClick={() => getCurrentLocation()}
-                                    className="mt-4 w-full h-[46px] rounded-xl bg-green-50 hover:bg-green-100 text-green-700 font-bold transition-colors flex items-center justify-center gap-2"
-                                >
-                                    <MapPin className="h-4 w-4" />
-                                    Use my current GPS location
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </>
-            )}
+            <LocationPickerSheet
+                isOpen={isLocationPickerOpen}
+                onClose={() => setIsLocationPickerOpen(false)}
+            />
 
             <AuthModal
                 isOpen={isAccountSheetOpen && !user}

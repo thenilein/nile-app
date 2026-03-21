@@ -1,13 +1,13 @@
-import React, { useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useCallback, useState } from "react";
 import LandingHeroCarousel from "../components/LandingHeroCarousel.tsx";
+import LocationPickerSheet from "./location/LocationPickerSheet.tsx";
 
 const HeroSection = () => {
-    const navigate = useNavigate();
+    const [locationSheetOpen, setLocationSheetOpen] = useState(false);
 
     const handleOrderNow = useCallback(() => {
-        navigate("/menu");
-    }, [navigate]);
+        setLocationSheetOpen(true);
+    }, []);
 
     return (
         <section className="relative flex min-h-dvh flex-col bg-[#fbfbfd]">
@@ -44,6 +44,14 @@ const HeroSection = () => {
                         Order Now
                     </button>
                 </div>
+
+                <LocationPickerSheet
+                    isOpen={locationSheetOpen}
+                    onClose={() => setLocationSheetOpen(false)}
+                    title="Delivery location"
+                    subtitle="Search, pick an address, or use GPS"
+                    navigateToMenuOnSelect
+                />
             </div>
         </section>
     );

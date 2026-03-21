@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { ArrowLeft, CheckCircle2 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 
 const OTP_LENGTH = 6;
 const RESEND_COOLDOWN_SEC = 30;
@@ -13,6 +13,10 @@ interface OtpVerificationProps {
   /** Called to resend and returns resend status */
   onResendOtp: () => Promise<boolean>;
   showToast: (type: "error" | "success", msg: string) => void;
+  /** `manual` shows a Verify button; `auto` submits when 6 digits are entered */
+  verifyMode?: "auto" | "manual";
+  /** Hide the top back control when the parent provides navigation */
+  hideBackButton?: boolean;
 }
 
 const OtpVerification: React.FC<OtpVerificationProps> = ({
@@ -21,6 +25,8 @@ const OtpVerification: React.FC<OtpVerificationProps> = ({
   onVerifyOtp,
   onResendOtp,
   showToast,
+  verifyMode = "auto",
+  hideBackButton = false,
 }) => {
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [loading, setLoading] = useState(false);
@@ -114,11 +120,12 @@ const OtpVerification: React.FC<OtpVerificationProps> = ({
 
   // Auto-submit when all 6 digits are filled
   useEffect(() => {
+    if (verifyMode === "manual") return;
     if (isOtpComplete && !loading && !success && !shake) {
       void handleVerify();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOtpComplete]);
+  }, [isOtpComplete, verifyMode]);
 
   const handleResend = async () => {
     if (resendCooldown > 0) return;
@@ -137,25 +144,28 @@ const OtpVerification: React.FC<OtpVerificationProps> = ({
 
   return (
     <div className="flex flex-col h-full">
-      <button
-        onClick={onBack}
-        className="self-start -ml-2 p-2 mb-2 text-gray-500 hover:bg-gray-100 rounded-full transition-colors active:scale-95"
-      >
-        <ArrowLeft className="w-5 h-5" />
-      </button>
+      {!hideBackButton && (
+        <button
+          type="button"
+          onClick={onBack}
+          className="self-start -ml-2 p-2 mb-2 text-gray-500 hover:bg-gray-100 rounded-full transition-colors active:scale-95"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+      )}
 
-      <div className="mb-8">
-        <h2 className="text-[26px] font-bold text-gray-900 tracking-tight mb-2">
+      <div className={hideBackButton ? "mb-6" : "mb-8"}>
+        <h2 className="text-[22px] font-bold text-gray-900 tracking-tight mb-2 md:text-[26px]">
           Enter OTP
         </h2>
         <p className="text-gray-500 text-[15px] leading-snug">
-          We've sent a 6-digit code to <br />
+          We&apos;ve sent a 6-digit code to <br />
           <span className="font-semibold text-gray-800">{maskedPhone}</span>
         </p>
       </div>
 
-      <form onSubmit={handleVerify} className="flex-1 flex flex-col">
-        <div className="mb-10">
+      <form onSubmit={handleVerify} className="flex flex-1 flex-col">
+        <div className={verifyMode === "manual" ? "mb-6" : "mb-10"}>
           <motion.div
             animate={shake ? shakeAnimation : {}}
             className={`flex justify-between gap-1 sm:gap-2 transition-opacity ${loading ? "opacity-60 pointer-events-none" : ""}`}
@@ -202,7 +212,17 @@ const OtpVerification: React.FC<OtpVerificationProps> = ({
           </motion.div>
         </div>
 
-        <div className="mt-auto pt-4 flex flex-col items-center gap-4">
+        {verifyMode === "manual" && (
+          <button
+            type="submit"
+            disabled={!isOtpComplete || loading || success}
+            className="mb-6 w-full rounded-xl bg-green-600 py-3.5 text-[15px] font-bold text-white shadow-sm transition-all hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400 disabled:shadow-none active:scale-[0.98]"
+          >
+            {loading ? "Verifying…" : "Verify"}
+          </button>
+        )}
+
+        <div className="mt-auto flex flex-col items-center gap-4 pt-2">
           <div className="h-6 flex items-center justify-center">
             {loading ? (
               <div className="flex items-center gap-2 text-sm font-semibold text-gray-500">

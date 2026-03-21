@@ -1,5 +1,7 @@
 /**
- * Mapbox Geocoding API (forward + reverse).
+ * Mapbox location APIs:
+ * - Forward search / autocomplete: Search Box API v1 `/forward` (see `mapboxForwardGeocode`).
+ * - Reverse geocode: Geocoding API v5 `mapbox.places` (see `mapboxReverseGeocode`).
  * Requires VITE_MAPBOX_ACCESS_TOKEN (or VITE_MAPBOX_TOKEN) in .env.
  */
 
@@ -46,14 +48,72 @@ export function isMapboxGeocodingConfigured(): boolean {
     return Boolean(getToken());
 }
 
-function featureIsTamilNadu(feature: MapboxFeature): boolean {
-    const ctx = feature.context || [];
-    for (const c of ctx) {
-        const sc = (c.short_code || "").toLowerCase();
-        if (sc === "in-tn") return true;
-        if (c.id?.startsWith("region") && c.text?.toLowerCase() === "tamil nadu") return true;
+/** Search Box forward response feature */
+interface SearchBoxForwardFeature {
+    type: string;
+    geometry?: { type: string; coordinates: [number, number] };
+    properties: {
+        name: string;
+        mapbox_id?: string;
+        full_address?: string;
+        place_formatted?: string;
+        context?: {
+            region?: { name?: string; region_code?: string; region_code_full?: string };
+            place?: { name?: string };
+            locality?: { name?: string };
+        };
+        coordinates?: { latitude: number; longitude: number };
+    };
+}
+
+function featureIsTamilNaduSearchBox(props: SearchBoxForwardFeature["properties"]): boolean {
+    const r = props.context?.region;
+    if (!r) return false;
+    const full = (r.region_code_full || "").toUpperCase();
+    if (full === "IN-TN") return true;
+    const name = (r.name || "").toLowerCase();
+    return name === "tamil nadu" || name === "tamilnadu";
+}
+
+function parseSearchBoxForwardFeature(f: SearchBoxForwardFeature): GeocodeSuggestion | null {
+    const p = f.properties;
+    let latitude: number | undefined;
+    let longitude: number | undefined;
+    if (p.coordinates != null && typeof p.coordinates.latitude === "number" && typeof p.coordinates.longitude === "number") {
+        latitude = p.coordinates.latitude;
+        longitude = p.coordinates.longitude;
+    } else if (f.geometry?.coordinates?.length === 2) {
+        longitude = f.geometry.coordinates[0];
+        latitude = f.geometry.coordinates[1];
     }
-    return false;
+    if (
+        latitude == null ||
+        longitude == null ||
+        Number.isNaN(latitude) ||
+        Number.isNaN(longitude)
+    ) {
+        return null;
+    }
+
+    const id = p.mapbox_id || `sb:${latitude.toFixed(5)},${longitude.toFixed(5)}`;
+    const placeName = p.context?.place?.name || p.context?.locality?.name || "";
+    const state = p.context?.region?.name || "Tamil Nadu";
+    let displayName = (p.full_address || "").trim();
+    if (!displayName) {
+        displayName = [p.name, p.place_formatted].filter(Boolean).join(", ");
+    }
+    if (!displayName) displayName = p.name;
+
+    const city = placeName || p.name;
+
+    return {
+        id,
+        displayName,
+        city,
+        state,
+        latitude,
+        longitude,
+    };
 }
 
 function parseMapboxFeature(feature: MapboxFeature, opts?: { preferFullPlaceName?: boolean }): GeocodeSuggestion {
@@ -96,7 +156,10 @@ function parseMapboxFeature(feature: MapboxFeature, opts?: { preferFullPlaceName
     };
 }
 
-/** Forward geocode; restricts to India and filters to Tamil Nadu where region is present. */
+/**
+ * Forward search / autocomplete via Mapbox Search Box API (`/search/searchbox/v1/forward`).
+ * Biases to India and Tamil Nadu; prefers TN results when the API returns region context.
+ */
 export async function mapboxForwardGeocode(query: string, limit = 8): Promise<GeocodeSuggestion[]> {
     const token = getToken();
     if (!token) return [];
@@ -104,30 +167,34 @@ export async function mapboxForwardGeocode(query: string, limit = 8): Promise<Ge
     const q = query.trim();
     if (q.length < 2) return [];
 
-    const path = encodeURIComponent(`${q}, Tamil Nadu, India`);
+    const lim = Math.min(Math.max(limit, 1), 10);
     const params = new URLSearchParams({
+        q,
         access_token: token,
-        limit: String(limit),
-        country: "IN",
-        types: "place,locality,neighborhood,district,address,poi",
+        limit: String(lim),
         language: "en",
+        country: "IN",
+        auto_complete: "true",
+        proximity: "78.6569,11.1271",
     });
 
-    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${path}.json?${params.toString()}`;
+    const url = `https://api.mapbox.com/search/searchbox/v1/forward?${params.toString()}`;
     const res = await fetch(url);
     if (!res.ok) return [];
 
-    const data: MapboxGeocodeResponse = await res.json();
+    const data = (await res.json()) as { features?: SearchBoxForwardFeature[] };
+    const features = data.features || [];
     const out: GeocodeSuggestion[] = [];
     const seen = new Set<string>();
 
-    let candidates = (data.features || []).filter(featureIsTamilNadu);
+    let candidates = features.filter((f) => featureIsTamilNaduSearchBox(f.properties));
     if (candidates.length === 0) {
-        candidates = data.features || [];
+        candidates = features;
     }
 
     for (const f of candidates) {
-        const s = parseMapboxFeature(f);
+        const s = parseSearchBoxForwardFeature(f);
+        if (!s) continue;
         if (seen.has(s.displayName)) continue;
         seen.add(s.displayName);
         out.push(s);

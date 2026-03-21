@@ -1,14 +1,7 @@
 import React, { useState } from "react";
-import { motion, AnimatePresence, Variants } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { AlertCircle, X, CheckCircle2 } from "lucide-react";
-import OtpVerification from "../pages/OtpVerification";
-import ProfileCompletionForm from "./ProfileCompletionForm";
-import {
-  completeProfile as completeProfileCore,
-  sendOtp as sendOtpCore,
-  verifyOtp as verifyOtpCore,
-  resendOtp as resendOtpCore
-} from "../lib/msg91Otp";
+import { PhoneOtpAuthFlow } from "./PhoneOtpAuthFlow.tsx";
 
 type AuthModalProps = {
   isOpen: boolean;
@@ -19,205 +12,40 @@ type AuthModalProps = {
 
 const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, variant = "centered" }) => {
   const isSheet = variant === "bottomSheet";
-  // Form State
-  const [phone, setPhone] = useState("");
-  const [fullName, setFullName] = useState("");
-  const [step, setStep] = useState<"phone" | "otp" | "profile">("phone");
-
-  // Status State
-  const [error, setError] = useState("");
   const [toastMsg, setToastMsg] = useState<{
     type: "error" | "success";
     text: string;
   } | null>(null);
-  const [shakeInput, setShakeInput] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [profileLoading, setProfileLoading] = useState(false);
-
-  if (!isOpen) return null;
 
   const showToast = (type: "error" | "success", text: string) => {
     setToastMsg({ type, text });
     setTimeout(() => setToastMsg(null), 3000);
   };
 
-  const resetForm = () => {
-    setError("");
-    setToastMsg(null);
-    setPhone("");
-    setFullName("");
-    setStep("phone");
-  };
-
   const handleClose = () => {
-    resetForm();
+    setToastMsg(null);
     onClose();
   };
 
-  // Strict numerical limits + spacing formatter visual
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const rawValue = e.target.value.replace(/\D/g, ""); // strip non-digits
-    if (rawValue.length <= 10) {
-      setPhone(rawValue);
-      setError("");
-    }
-  };
+  if (!isOpen) return null;
 
-  const handlePaste = (e: React.ClipboardEvent) => {
-    e.preventDefault();
-    const pastedData = e.clipboardData
-      .getData("text")
-      .replace(/\D/g, "")
-      .slice(0, 10);
-    setPhone(pastedData);
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    // Block any non-numeric character (except essential controls)
-    if (
-      !/[\d]/.test(e.key) &&
-      ![
-        "Backspace",
-        "ArrowLeft",
-        "ArrowRight",
-        "Tab",
-        "Delete",
-        "Enter",
-      ].includes(e.key)
-    ) {
-      e.preventDefault();
-    }
-  };
-
-  const handleSendOtp = async (e?: React.FormEvent | React.MouseEvent) => {
-    if (e) e.preventDefault();
-    setError("");
-
-    if (phone.length !== 10) {
-      setShakeInput(true);
-      setError("Phone number must be exactly 10 digits");
-      showToast("error", "Invalid phone number");
-      setTimeout(() => setShakeInput(false), 500);
-      return;
-    }
-
-    if (!/^[6-9]/.test(phone)) {
-      setShakeInput(true);
-      setError("Enter a valid 10-digit mobile number");
-      showToast("error", "Invalid phone number");
-      setTimeout(() => setShakeInput(false), 500);
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const ok = await sendOtpCore({
-        phone,
-        showToast,
-      });
-
-      // Only transition to OTP after the backend function confirms the send.
-      if (ok) {
-        showToast("success", `OTP sent to +91 ${phone.substring(0, 2)}XXX ${phone.substring(7, 10)}`);
-        setStep("otp");
-      }
-    } catch {
-      setError("Failed to send OTP. Try again.");
-      showToast("error", "Failed to send OTP.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleVerifyOtp = async (otp: string): Promise<boolean> => {
-    return await verifyOtpCore(phone, otp, showToast, {
-      onVerified: () => {
-        setTimeout(() => {
-          if (localStorage.getItem('pendingCheckout') === 'true') {
-            localStorage.removeItem('pendingCheckout');
-            window.dispatchEvent(new CustomEvent('open-checkout'));
-          }
-          handleClose();
-          showToast('success', 'Welcome back to Nile Ice Creams!');
-        }, 800);
-      },
-      onNeedsProfile: () => {
-        showToast('success', 'Phone verified. Add your name to continue.');
-        setStep("profile");
-      }
-    });
-  };
-
-  const handleResendOtp = async (): Promise<boolean> => {
-    return await resendOtpCore({ phone, showToast });
-  };
-
-  const handleCompleteProfile = async () => {
-    setProfileLoading(true);
-    try {
-      const ok = await completeProfileCore({
-        phone,
-        fullName,
-        showToast,
-      });
-
-      if (!ok) return;
-
-      if (localStorage.getItem('pendingCheckout') === 'true') {
-        localStorage.removeItem('pendingCheckout');
-        window.dispatchEvent(new CustomEvent('open-checkout'));
-      }
-
-      handleClose();
-      showToast('success', 'Welcome to Nile Ice Creams! 🎉');
-    } finally {
-      setProfileLoading(false);
-    }
-  };
-
-  // Animated space formatter for visual presentation
-  const formattedVisualPhone =
-    phone.length > 5 ? `${phone.slice(0, 5)} ${phone.slice(5)}` : phone;
-
-  const modalVariants: Variants = {
+  const modalVariants = {
     hidden: { scale: 0.9, opacity: 0 },
     visible: {
       scale: 1,
       opacity: 1,
-      transition: { type: "spring", damping: 25, stiffness: 300 },
+      transition: { type: "spring" as const, damping: 25, stiffness: 300 },
     },
     exit: { scale: 0.95, opacity: 0, transition: { duration: 0.2 } },
   };
 
-  const sheetVariants: Variants = {
+  const sheetVariants = {
     hidden: { y: "100%" },
     visible: {
       y: 0,
-      transition: { type: "spring", damping: 28, stiffness: 320 },
+      transition: { type: "spring" as const, damping: 28, stiffness: 320 },
     },
-    exit: { y: "100%", transition: { duration: 0.22, ease: [0.4, 0, 1, 1] } },
-  };
-
-  const stepVariants: Variants = {
-    enter: (direction: number) => ({
-      x: direction > 0 ? 50 : -50,
-      opacity: 0,
-    }),
-    center: {
-      x: 0,
-      opacity: 1,
-      transition: { type: "spring", damping: 25, stiffness: 300 },
-    },
-    exit: (direction: number) => ({
-      x: direction < 0 ? 50 : -50,
-      opacity: 0,
-      transition: { duration: 0.2 },
-    }),
-  };
-
-  const shakeAnimation = {
-    x: [0, -10, 10, -10, 10, 0],
-    transition: { duration: 0.4 },
+    exit: { y: "100%", transition: { duration: 0.22, ease: [0.4, 0, 1, 1] as const } },
   };
 
   return (
@@ -226,7 +54,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, variant = "cente
         <div
           className={`fixed inset-0 flex ${isSheet ? "z-[130] items-end justify-stretch" : "z-50 items-center justify-center p-4"}`}
         >
-          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -235,30 +62,28 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, variant = "cente
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
           />
 
-          {/* Toast */}
           <AnimatePresence>
             {toastMsg && (
               <motion.div
                 initial={{ opacity: 0, y: -20, scale: 0.9 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                className={`fixed top-6 left-1/2 -translate-x-1/2 z-[100] px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 max-w-[90vw] ${
+                className={`fixed left-1/2 top-6 z-[100] flex max-w-[90vw] -translate-x-1/2 items-center gap-2 rounded-full px-4 py-2.5 shadow-lg ${
                   toastMsg.type === "error"
                     ? "bg-red-500 text-white"
                     : "bg-green-600 text-white"
                 }`}
               >
                 {toastMsg.type === "error" ? (
-                  <AlertCircle className="w-4 h-4" />
+                  <AlertCircle className="h-4 w-4" />
                 ) : (
-                  <CheckCircle2 className="w-4 h-4" />
+                  <CheckCircle2 className="h-4 w-4" />
                 )}
                 <span className="text-sm font-semibold">{toastMsg.text}</span>
               </motion.div>
             )}
           </AnimatePresence>
 
-          {/* Modal / bottom sheet */}
           <motion.div
             variants={isSheet ? sheetVariants : modalVariants}
             initial="hidden"
@@ -272,161 +97,34 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, variant = "cente
             style={isSheet ? { paddingBottom: "env(safe-area-inset-bottom)" } : undefined}
           >
             {isSheet && (
-              <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
+              <div className="flex flex-shrink-0 justify-center pb-1 pt-3">
                 <div className="h-1.5 w-12 rounded-full bg-gray-200" />
               </div>
             )}
-            {/* Close button */}
             <button
+              type="button"
               onClick={handleClose}
-              className={`absolute p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors z-10 ${
-                isSheet ? "top-3 right-3" : "top-4 right-4"
+              className={`absolute z-10 rounded-full p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 ${
+                isSheet ? "right-3 top-3" : "right-4 top-4"
               }`}
             >
-              <X className="w-5 h-5" />
+              <X className="h-5 w-5" />
             </button>
 
             <div
-              className={`relative flex flex-col overflow-hidden ${
+              className={`relative flex min-h-0 flex-col overflow-hidden ${
                 isSheet
                   ? "max-h-[min(calc(92dvh-48px),780px)] min-h-0 overflow-y-auto px-6 pb-8 pt-2"
                   : "min-h-[460px] p-8 pb-10"
               }`}
             >
-              <AnimatePresence mode="wait" custom={step === "phone" ? -1 : 1}>
-                {step === "phone" ? (
-                  <motion.div
-                    key="phone-step"
-                    custom={-1}
-                    variants={stepVariants}
-                    initial="enter"
-                    animate="center"
-                    exit="exit"
-                    className="flex flex-col h-full w-full"
-                  >
-                    <div className="text-center mb-8">
-                      <div className="w-12 h-12 bg-green-800 rounded-full flex items-center justify-center text-white font-bold text-2xl mx-auto mb-4 pulse-animation">
-                        N
-                      </div>
-                      <h2 className="text-[26px] font-bold text-gray-900 tracking-tight mb-2">
-                        Welcome
-                      </h2>
-                      <p className="text-gray-500 text-sm">
-                        Enter your phone number to continue
-                      </p>
-                    </div>
-
-                    <div className="space-y-6 flex-1 flex flex-col">
-                      <div>
-                        <motion.div
-                          animate={shakeInput ? shakeAnimation : {}}
-                          className={`relative flex items-center h-14 bg-white border-[1.5px] rounded-xl overflow-hidden transition-all duration-200 focus-within:ring-4 focus-within:ring-green-500/20 ${
-                            error
-                              ? "border-red-500"
-                              : "border-gray-200 focus-within:border-green-600"
-                          }`}
-                        >
-                          {/* Static Prefix */}
-                          <div className="flex items-center justify-center px-4 h-full bg-gray-50/50 border-r border-gray-100 select-none">
-                            <span className="text-lg mr-1.5 leading-none">
-                              🇮🇳
-                            </span>
-                            <span className="text-[17px] font-semibold text-gray-500">
-                              +91
-                            </span>
-                          </div>
-
-                          {/* Input Area */}
-                          <input
-                            type="tel"
-                            inputMode="numeric"
-                            maxLength={11}
-                            autoComplete="tel"
-                            value={formattedVisualPhone}
-                            onChange={handlePhoneChange}
-                            onPaste={handlePaste}
-                            onKeyDown={handleKeyPress}
-                            className="block w-full h-full pl-4 pr-3 text-[18px] font-semibold tracking-wide text-gray-900 placeholder-transparent bg-transparent outline-none caret-green-600 focus:placeholder-gray-300"
-                            placeholder="98765 43210"
-                          />
-                        </motion.div>
-
-                        <div className="mt-2 min-h-[20px]">
-                          {error && (
-                            <p className="text-[13px] font-medium text-red-500 flex items-center gap-1.5 transition-opacity">
-                              <AlertCircle className="w-3.5 h-3.5" />
-                              {error}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="mt-auto pt-4">
-                        <button
-                          type="button"
-                          onClick={handleSendOtp}
-                          disabled={loading || phone.length !== 10}
-                          className="w-full flex justify-center items-center py-3.5 px-4 rounded-xl text-[15px] font-bold transition-all duration-300 shadow-sm
-                                                    disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed
-                                                    not-disabled:bg-green-600 not-disabled:hover:bg-green-700 not-disabled:text-white not-disabled:hover:shadow-md not-disabled:active:scale-[0.98]"
-                        >
-                          {loading ? (
-                            <div className="flex items-center gap-2">
-                              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                              Sending...
-                            </div>
-                          ) : (
-                            "Send OTP"
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  </motion.div>
-                ) : step === "otp" ? (
-                  <motion.div
-                    key="otp-step"
-                    custom={1}
-                    variants={stepVariants}
-                    initial="enter"
-                    animate="center"
-                    exit="exit"
-                    className="h-full w-full"
-                  >
-                    <OtpVerification
-                      maskedPhone={
-                        "+91 " +
-                        phone.substring(0, 2) +
-                        "XXX X" +
-                        phone.substring(6, 10)
-                      }
-                      onVerifyOtp={handleVerifyOtp}
-                      onResendOtp={handleResendOtp}
-                      onBack={() => setStep("phone")}
-                      showToast={showToast}
-                    />
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    key="profile-step"
-                    custom={1}
-                    variants={stepVariants}
-                    initial="enter"
-                    animate="center"
-                    exit="exit"
-                    className="h-full w-full flex items-center"
-                  >
-                    <ProfileCompletionForm
-                      phone={phone}
-                      fullName={fullName}
-                      loading={profileLoading}
-                      onNameChange={setFullName}
-                      onSubmit={handleCompleteProfile}
-                      onBack={() => setStep("otp")}
-                      submitLabel="Create account"
-                    />
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              <PhoneOtpAuthFlow
+                active={isOpen}
+                showToast={showToast}
+                variant="sheet"
+                syncPendingCheckoutEvent
+                onAuthenticated={handleClose}
+              />
             </div>
           </motion.div>
         </div>

@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Truck, Store, Banknote, CreditCard, Wallet, Smartphone, ShieldCheck, Navigation, AlertCircle, CheckCircle2, ChevronLeft, Loader2 } from 'lucide-react';
+import { X, Truck, Store, Banknote, CreditCard, Wallet, Smartphone, ShieldCheck, Navigation, AlertCircle, CheckCircle2, ChevronLeft, Loader2, MapPin } from 'lucide-react';
 import { CouponSection } from './CouponSection';
 import { useNavigate } from 'react-router-dom';
 import confetti from 'canvas-confetti';
@@ -10,6 +10,9 @@ import { useCart } from '../context/CartContext';
 import { useLocation } from '../context/LocationContext';
 import { CheckoutDeliveryMap, DEFAULT_CHECKOUT_MAP_CENTER } from './CheckoutDeliveryMap.tsx';
 import { mapboxReverseGeocode, mergeFormattedAddress } from '../lib/mapboxGeocoding.ts';
+import { findMatchingSavedAddress } from '../lib/addressCoordMatch.ts';
+import { resolveGpsCoordsToLocationData } from '../lib/resolveGpsToLocationData.ts';
+import { PhoneOtpAuthFlow } from './PhoneOtpAuthFlow.tsx';
 
 type AddressType = 'home' | 'work' | 'other';
 
@@ -54,6 +57,9 @@ export interface CheckoutFlowContentProps {
 type DeliveryType = 'delivery' | 'pickup';
 type PaymentMethod = 'cash' | 'upi' | 'card' | 'wallet';
 
+/** 0 sign-in → 1 address → 2 payment → 3 confirmation */
+type CheckoutStep = 0 | 1 | 2 | 3;
+
 const FREE_DELIVERY_THRESHOLD = 300;
 const DELIVERY_FEE = 30;
 
@@ -76,12 +82,19 @@ const Toast: React.FC<{ msg: { type: 'error' | 'success'; text: string } | null 
 
 export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCart, onDismiss }: CheckoutFlowContentProps) {
     const { totalItems, totalPrice, items, clearCart } = useCart();
-    const { user } = useAuth();
+    const { user, isLoading: authLoading } = useAuth();
     const { locationData, nearestOutlet, setLocationData } = useLocation();
     const navigate = useNavigate();
 
-    // Steps: 1 = Address & delivery, 2 = Payment, 3 = Confirmation
-    const [step, setStep] = useState<1 | 2 | 3>(1);
+    const [step, setStep] = useState<CheckoutStep>(1);
+    /** 1 = forward (next), -1 = back — drives slide direction for step panels + title */
+    const [slideDir, setSlideDir] = useState(1);
+    const checkoutBootstrapped = useRef(false);
+
+    const transitionTo = useCallback((next: CheckoutStep, dir: number) => {
+        setSlideDir(dir);
+        setStep(next);
+    }, []);
     const [deliveryType, setDeliveryType] = useState<DeliveryType>(orderType ?? 'delivery');
 
     useEffect(() => {
@@ -111,12 +124,44 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
     const [loadingSavedAddresses, setLoadingSavedAddresses] = useState(false);
     const [savingAddress, setSavingAddress] = useState(false);
     const [checkoutGpsLoading, setCheckoutGpsLoading] = useState(false);
+    /** When pin matches a saved address, start collapsed (no map/inputs) until user taps Change address. */
+    const [deliveryFormExpanded, setDeliveryFormExpanded] = useState(false);
 
     const [toastMsg, setToastMsg] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
     const showToast = useCallback((type: 'error' | 'success', text: string) => {
         setToastMsg({ type, text });
         setTimeout(() => setToastMsg(null), 3000);
     }, []);
+
+    useLayoutEffect(() => {
+        if (!visible) {
+            checkoutBootstrapped.current = false;
+            return;
+        }
+        if (authLoading) return;
+        if (!checkoutBootstrapped.current) {
+            checkoutBootstrapped.current = true;
+            transitionTo(user?.id ? 1 : 0, 1);
+        }
+    }, [visible, authLoading, user?.id, transitionTo]);
+
+    useEffect(() => {
+        if (!visible || !user?.id || step !== 0) return;
+        transitionTo(1, 1);
+    }, [visible, user?.id, step, transitionTo]);
+
+    /** Pin matches an existing saved row (within ~45m) — no need to save again. */
+    const matchingSavedForPin = useMemo(() => {
+        if (!locationData || savedAddresses.length === 0) return undefined;
+        return findMatchingSavedAddress(savedAddresses, locationData.latitude, locationData.longitude);
+    }, [locationData, savedAddresses]);
+
+    const deliveryCompactSaved = Boolean(
+        user?.id &&
+            !loadingSavedAddresses &&
+            matchingSavedForPin &&
+            !deliveryFormExpanded
+    );
 
     // Initialise map anchor when opening address step (delivery)
     useEffect(() => {
@@ -167,7 +212,8 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
     useEffect(() => {
         if (!visible) {
             setTimeout(() => {
-                setStep(1);
+                setSlideDir(1);
+                setStep(0);
                 setPaymentMethod(null);
                 setOrderId(null);
                 setDeliveryType(orderType ?? 'delivery');
@@ -185,11 +231,12 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
                 setFlyToTarget(null);
                 setSavedAddresses([]);
                 setCheckoutGpsLoading(false);
+                setDeliveryFormExpanded(false);
             }, 300);
         }
     }, [visible, orderType]);
 
-    const applySavedAddress = (row: SavedAddressRow) => {
+    const applySavedAddress = useCallback((row: SavedAddressRow) => {
         if (row.latitude == null || row.longitude == null) return;
         const lat = row.latitude;
         const lng = row.longitude;
@@ -208,7 +255,14 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
         if (row.street) setStreetName(row.street);
         setHouseNo(row.locality || '');
         setFlyToTarget({ lat, lng });
-    };
+    }, [setLocationData]);
+
+    // Keep order fields in sync when using compact saved-address checkout
+    useEffect(() => {
+        if (!visible || step !== 1 || deliveryType !== 'delivery') return;
+        if (!deliveryCompactSaved || !matchingSavedForPin) return;
+        applySavedAddress(matchingSavedForPin);
+    }, [visible, step, deliveryType, deliveryCompactSaved, matchingSavedForPin, applySavedAddress]);
 
     const handleMapPositionChange = useCallback(
         (lat: number, lng: number) => {
@@ -230,16 +284,11 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
         }
         setCheckoutGpsLoading(true);
         navigator.geolocation.getCurrentPosition(
-            ({ coords }) => {
+            async ({ coords }) => {
                 const lat = coords.latitude;
                 const lng = coords.longitude;
-                setLocationData({
-                    latitude: lat,
-                    longitude: lng,
-                    city: "",
-                    state: "",
-                    displayName: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
-                });
+                const data = await resolveGpsCoordsToLocationData(lat, lng, user?.id);
+                setLocationData(data);
                 setFlyToTarget({ lat, lng });
                 setCheckoutGpsLoading(false);
             },
@@ -271,6 +320,15 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
         }
         if (!streetName.trim()) {
             showToast("error", "Enter street / road name");
+            return;
+        }
+        const duplicate = findMatchingSavedAddress(
+            savedAddresses,
+            locationData.latitude,
+            locationData.longitude
+        );
+        if (duplicate) {
+            showToast("success", "This location is already in your saved addresses");
             return;
         }
         setSavingAddress(true);
@@ -351,6 +409,11 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
 
     // ── Continue to payment step ────────────────────────────────────────
     const handleContinueToPayment = () => {
+        if (!user?.id) {
+            showToast('error', 'Sign in to continue');
+            transitionTo(0, -1);
+            return;
+        }
         if (deliveryType === "delivery") {
             if (!locationData?.latitude || !locationData?.longitude) {
                 setStep1Error("Set your delivery location on the map.");
@@ -371,16 +434,21 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
             }
         }
         setStep1Error("");
-        setStep(2);
+        transitionTo(2, 1);
     };
 
     // ── Order placement ────────────────────────────────────────────────
     const handlePlaceOrder = async () => {
+        if (!user?.id) {
+            showToast('error', 'Sign in to place your order');
+            transitionTo(0, -1);
+            return;
+        }
         if (!paymentMethod) return;
         if (paymentMethod === 'upi' && !upiId.trim()) { alert('Please enter UPI ID'); return; }
         setIsSubmitting(true);
         try {
-            const userId = user?.id || null;
+            const userId = user.id;
             const profilePhone =
                 (user?.user_metadata?.phone as string | undefined) ||
                 (user?.phone as string | undefined) ||
@@ -416,7 +484,7 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
             if (itemsError) throw itemsError;
             setOrderId(newOrderId);
             clearCart();
-            setStep(3);
+            transitionTo(3, 1);
         } catch (error) {
             console.error('Order submission failed:', error);
             alert('Order failed, try again');
@@ -430,7 +498,51 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
     const discountAmt = Math.round(couponCode ? couponDiscount : 0);
     const grandTotal = Math.round(totalPrice) + gst + delFee - discountAmt;
 
-    const slideVariants = { enter: { x: '100%', opacity: 0 }, center: { x: 0, opacity: 1 }, exit: { x: '-100%', opacity: 0 } };
+    const easeSmooth = [0.22, 1, 0.36, 1] as const;
+
+    const slideVariants = {
+        enter: (dir: number) => ({
+            x: dir > 0 ? '100%' : '-100%',
+            opacity: 0,
+        }),
+        center: {
+            x: 0,
+            opacity: 1,
+            transition: { duration: 0.38, ease: easeSmooth },
+        },
+        exit: (dir: number) => ({
+            x: dir > 0 ? '-100%' : '100%',
+            opacity: 0,
+            transition: { duration: 0.3, ease: easeSmooth },
+        }),
+    };
+
+    const titleVariants = {
+        initial: (dir: number) => ({
+            opacity: 0,
+            y: dir > 0 ? 10 : -8,
+        }),
+        animate: {
+            opacity: 1,
+            y: 0,
+            transition: { duration: 0.32, ease: easeSmooth },
+        },
+        exit: (dir: number) => ({
+            opacity: 0,
+            y: dir > 0 ? -8 : 8,
+            transition: { duration: 0.22, ease: easeSmooth },
+        }),
+    };
+
+    const handleHeaderBack = useCallback(() => {
+        if (step === 2) {
+            transitionTo(1, -1);
+            return;
+        }
+        setStep1Error('');
+        localStorage.removeItem('pendingCheckout');
+        onBackToCart();
+    }, [step, transitionTo, onBackToCart]);
 
     if (!visible) return null;
 
@@ -440,49 +552,93 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
 
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
                 {step !== 3 && (
-                    <div className="flex-shrink-0 border-b border-gray-100 px-4 pb-3 pt-2">
-                        <div className="mb-2 flex items-center justify-between">
-                            <h2 className="text-lg font-bold text-gray-900">
-                                {step === 1 ? 'Address & delivery' : 'Payment'}
-                            </h2>
+                    <div className="flex-shrink-0 border-b border-gray-100 px-4 pb-3 pt-3">
+                        <div className="flex items-center justify-between gap-2">
+                            <motion.button
+                                type="button"
+                                onClick={handleHeaderBack}
+                                whileTap={{ scale: 0.96 }}
+                                transition={{ type: 'spring', stiffness: 520, damping: 32 }}
+                                className="-ml-1 flex min-h-[44px] min-w-[44px] items-center gap-0.5 rounded-xl py-2 pl-1 pr-2 text-sm font-semibold text-green-700 transition-colors hover:bg-green-50 hover:text-green-800 md:min-h-0 md:min-w-0"
+                                aria-label={step === 2 ? 'Back to address' : 'Back to cart'}
+                            >
+                                <ChevronLeft className="h-5 w-5 shrink-0" strokeWidth={2.25} />
+                                <span>{step === 2 ? 'Address' : 'Cart'}</span>
+                            </motion.button>
                             <button
                                 type="button"
                                 onClick={onDismiss}
-                                className="rounded-full p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+                                className="rounded-full p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
                                 aria-label="Close"
                             >
                                 <X className="h-5 w-5" />
                             </button>
                         </div>
-                        <span className="inline-block rounded-full border border-green-200 bg-green-50 px-3 py-1 text-xs font-bold text-green-800">
+                        <AnimatePresence mode="wait" custom={slideDir}>
+                            <motion.h2
+                                key={step}
+                                custom={slideDir}
+                                variants={titleVariants}
+                                initial="initial"
+                                animate="animate"
+                                exit="exit"
+                                className="mt-1 text-lg font-bold tracking-tight text-gray-900"
+                            >
+                                {step === 0 ? 'Sign in' : step === 1 ? 'Confirm address' : 'Payment'}
+                            </motion.h2>
+                        </AnimatePresence>
+                        <motion.span
+                            layout
+                            transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                            className="mt-2 inline-block rounded-full border border-green-200 bg-green-50 px-3 py-1 text-xs font-bold text-green-800"
+                        >
                             {totalItems} items · ₹{grandTotal}
-                        </span>
+                        </motion.span>
                     </div>
                 )}
 
                 <div className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-                            <AnimatePresence mode="wait" custom={step}>
+                            <AnimatePresence mode="wait" custom={slideDir} initial={false}>
 
-                                {/* ── STEP 1: Address & delivery ── */}
+                                {/* ── STEP 0: Sign in (before address) ── */}
+                                {step === 0 && (
+                                    <motion.div
+                                        key="step0signin"
+                                        custom={slideDir}
+                                        variants={slideVariants}
+                                        initial="enter"
+                                        animate="center"
+                                        exit="exit"
+                                        className="flex flex-col gap-5 px-5 pb-6 pt-2"
+                                    >
+                                        {authLoading ? (
+                                            <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+                                                <Loader2 className="h-10 w-10 animate-spin text-green-600" />
+                                                <p className="text-sm font-medium text-gray-600">Checking your session…</p>
+                                            </div>
+                                        ) : (
+                                            <PhoneOtpAuthFlow
+                                                active={visible && step === 0 && !authLoading}
+                                                showToast={showToast}
+                                                variant="embedded"
+                                                syncPendingCheckoutEvent={false}
+                                                onAuthenticated={() => transitionTo(1, 1)}
+                                            />
+                                        )}
+                                    </motion.div>
+                                )}
+
+                                {/* ── STEP 1: Confirm address & delivery ── */}
                                 {step === 1 && (
                                     <motion.div
                                         key="step1"
+                                        custom={slideDir}
                                         variants={slideVariants}
-                                        initial="enter" animate="center" exit="exit"
-                                        transition={{ duration: 0.3, ease: 'easeInOut' }}
-                                        className="flex flex-col gap-5 p-5"
+                                        initial="enter"
+                                        animate="center"
+                                        exit="exit"
+                                        className="flex flex-col gap-5 px-5 pb-6 pt-2"
                                     >
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setStep1Error('');
-                                                onBackToCart();
-                                            }}
-                                            className="-mt-1 mb-1 flex items-center gap-1 self-start text-sm font-semibold text-green-700"
-                                        >
-                                            <ChevronLeft className="h-4 w-4" />
-                                            Cart
-                                        </button>
                                         {step1Error && (
                                             <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-500">
                                                 {step1Error}
@@ -494,6 +650,7 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
                                                 type="button"
                                                 onClick={() => {
                                                     setDeliveryType('delivery');
+                                                    setDeliveryFormExpanded(false);
                                                     onOrderTypeChange?.('delivery');
                                                 }}
                                                 className={`flex h-[48px] flex-1 items-center justify-center gap-2 rounded-lg text-[15px] font-bold transition-all md:h-auto md:py-2.5 md:text-sm ${deliveryType === 'delivery' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
@@ -514,177 +671,263 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
 
                                         <AnimatePresence mode="wait">
                                             {deliveryType === 'delivery' ? (
-                                                <motion.div
-                                                    key="delivery-fields"
-                                                    initial={{ opacity: 0, height: 0 }}
-                                                    animate={{ opacity: 1, height: 'auto' }}
-                                                    exit={{ opacity: 0, height: 0 }}
-                                                    transition={{ duration: 0.25 }}
-                                                    className="space-y-4 overflow-hidden"
-                                                >
-                                                    {mapBootstrap && (
-                                                        <CheckoutDeliveryMap
-                                                            centerLat={mapBootstrap.lat}
-                                                            centerLng={mapBootstrap.lng}
-                                                            onCenterChange={handleMapPositionChange}
-                                                            flyTo={flyToTarget}
-                                                            onFlyToComplete={() => setFlyToTarget(null)}
-                                                            className="h-[260px]"
-                                                        />
-                                                    )}
-
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleUseMyLocation}
-                                                        disabled={checkoutGpsLoading}
-                                                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-green-50 py-2.5 text-sm font-semibold text-green-700 transition-colors hover:bg-green-100 disabled:opacity-60"
+                                                deliveryCompactSaved && matchingSavedForPin ? (
+                                                    <motion.div
+                                                        key="delivery-compact-saved"
+                                                        initial={{ opacity: 0, height: 0 }}
+                                                        animate={{ opacity: 1, height: 'auto' }}
+                                                        exit={{ opacity: 0, height: 0 }}
+                                                        transition={{ duration: 0.25 }}
+                                                        className="space-y-4 overflow-hidden"
                                                     >
-                                                        {checkoutGpsLoading ? (
-                                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                                        ) : (
-                                                            <Navigation className="h-4 w-4" />
-                                                        )}
-                                                        {checkoutGpsLoading ? 'Getting location…' : 'Use my current location'}
-                                                    </button>
-
-                                                    <div>
-                                                        <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">Recipient name</label>
-                                                        <input
-                                                            type="text"
-                                                            value={recipientName}
-                                                            onChange={e => setRecipientName(e.target.value)}
-                                                            placeholder="Full name"
-                                                            autoComplete="name"
-                                                            className="h-[52px] w-full rounded-xl border border-gray-200 bg-gray-50 px-4 text-[16px] transition-shadow focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500 md:h-[48px] md:text-sm"
-                                                        />
-                                                    </div>
-
-                                                    <div>
-                                                        <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">Phone number</label>
-                                                        <div className="flex overflow-hidden rounded-xl border border-gray-200 bg-gray-50 focus-within:border-green-500 focus-within:ring-1 focus-within:ring-green-500">
-                                                            <span className="flex shrink-0 items-center border-r border-gray-200 bg-gray-100 px-3 text-sm font-medium text-gray-600">
-                                                                +91
-                                                            </span>
-                                                            <input
-                                                                type="tel"
-                                                                inputMode="numeric"
-                                                                value={deliveryPhone}
-                                                                onChange={e => setDeliveryPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                                                                placeholder="9876543210"
-                                                                autoComplete="tel"
-                                                                className="min-w-0 flex-1 bg-transparent py-3 pl-3 pr-3 text-[16px] focus:outline-none md:text-sm"
+                                                        <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+                                                            <div className="flex gap-3">
+                                                                <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-green-700" aria-hidden />
+                                                                <div className="min-w-0 flex-1">
+                                                                    <p className="text-[11px] font-bold uppercase tracking-wider text-green-800">
+                                                                        Delivering to saved address
+                                                                    </p>
+                                                                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                                                                        <span className="font-semibold text-gray-900">
+                                                                            {matchingSavedForPin.recipient_name || 'Saved address'}
+                                                                        </span>
+                                                                        {matchingSavedForPin.address_type &&
+                                                                            (matchingSavedForPin.address_type === 'home' ||
+                                                                                matchingSavedForPin.address_type === 'work' ||
+                                                                                matchingSavedForPin.address_type === 'other') && (
+                                                                                <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-green-800">
+                                                                                    {ADDRESS_TYPE_LABELS[matchingSavedForPin.address_type]}
+                                                                                </span>
+                                                                            )}
+                                                                    </div>
+                                                                    <p className="mt-2 text-sm leading-snug text-gray-700">
+                                                                        {matchingSavedForPin.formatted_address ||
+                                                                            [matchingSavedForPin.locality, matchingSavedForPin.street, matchingSavedForPin.city]
+                                                                                .filter(Boolean)
+                                                                                .join(', ') ||
+                                                                            '—'}
+                                                                    </p>
+                                                                    {matchingSavedForPin.phone && (
+                                                                        <p className="mt-2 text-xs font-medium text-gray-600">
+                                                                            +91 {normalizeIndiaPhone(matchingSavedForPin.phone)}
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setDeliveryFormExpanded(true)}
+                                                            className="w-full rounded-xl border border-gray-200 bg-white py-3 text-sm font-bold text-green-700 transition-colors hover:bg-gray-50"
+                                                        >
+                                                            Change address
+                                                        </button>
+                                                        <div>
+                                                            <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">
+                                                                Instructions (optional)
+                                                            </label>
+                                                            <textarea
+                                                                value={instructions}
+                                                                onChange={(e) => setInstructions(e.target.value)}
+                                                                placeholder="E.g. Ring the bell, leave at door…"
+                                                                className="min-h-[80px] w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-[16px] focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500 md:min-h-[72px] md:text-sm"
                                                             />
                                                         </div>
-                                                    </div>
-
-                                                    <div>
-                                                        <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">Save as</label>
-                                                        <div className="flex gap-2 rounded-xl bg-gray-100 p-1">
-                                                            {(['home', 'work', 'other'] as const).map((t) => (
-                                                                <button
-                                                                    key={t}
-                                                                    type="button"
-                                                                    onClick={() => setAddressType(t)}
-                                                                    className={`flex-1 rounded-lg py-2.5 text-sm font-bold transition-all ${
-                                                                        addressType === t
-                                                                            ? 'bg-green-600 text-white shadow-sm'
-                                                                            : 'text-gray-600 hover:text-gray-900'
-                                                                    }`}
-                                                                >
-                                                                    {ADDRESS_TYPE_LABELS[t]}
-                                                                </button>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-
-                                                    <div>
-                                                        <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">Street / road name</label>
-                                                        <input
-                                                            type="text"
-                                                            value={streetName}
-                                                            onChange={e => setStreetName(e.target.value)}
-                                                            placeholder="e.g. Gandhi Road, Main Street"
-                                                            className="h-[52px] w-full rounded-xl border border-gray-200 bg-gray-50 px-4 text-[16px] transition-shadow focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500 md:h-[48px] md:text-sm"
-                                                        />
-                                                    </div>
-
-                                                    <div>
-                                                        <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">Flat / house / apartment (optional)</label>
-                                                        <input
-                                                            type="text"
-                                                            value={houseNo}
-                                                            onChange={e => setHouseNo(e.target.value)}
-                                                            placeholder="e.g. 12B, 2nd floor"
-                                                            className="h-[52px] w-full rounded-xl border border-gray-200 bg-gray-50 px-4 text-[16px] transition-shadow focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500 md:h-[48px] md:text-sm"
-                                                        />
-                                                    </div>
-
-                                                    {user?.id && (
-                                                        <div>
-                                                            <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">Saved addresses</label>
-                                                            {loadingSavedAddresses ? (
-                                                                <div className="flex justify-center py-4">
-                                                                    <Loader2 className="h-6 w-6 animate-spin text-green-600" />
-                                                                </div>
-                                                            ) : savedAddresses.length === 0 ? (
-                                                                <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50/80 px-3 py-3 text-xs text-gray-500">
-                                                                    No saved addresses yet. Fill the form and tap Save address.
-                                                                </p>
-                                                            ) : (
-                                                                <ul className="space-y-2">
-                                                                    {savedAddresses.map(row => (
-                                                                        <li key={row.id}>
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={() => applySavedAddress(row)}
-                                                                                className="w-full rounded-xl border border-gray-200 bg-white p-3 text-left transition-colors hover:border-green-300 hover:bg-green-50/50"
-                                                                            >
-                                                                                <div className="flex items-center justify-between gap-2">
-                                                                                    <span className="text-sm font-semibold text-gray-900">
-                                                                                        {row.recipient_name || 'Saved address'}
-                                                                                    </span>
-                                                                                    {row.address_type && (
-                                                                                        <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-green-800">
-                                                                                            {ADDRESS_TYPE_LABELS[row.address_type as AddressType] || row.address_type}
-                                                                                        </span>
-                                                                                    )}
-                                                                                </div>
-                                                                                <span className="mt-1 line-clamp-2 block text-sm text-gray-600">
-                                                                                    {row.formatted_address ||
-                                                                                        [row.locality, row.street, row.city].filter(Boolean).join(', ') ||
-                                                                                        '—'}
-                                                                                </span>
-                                                                                {row.phone && (
-                                                                                    <span className="mt-0.5 block text-xs text-gray-500">+91 {row.phone}</span>
-                                                                                )}
-                                                                            </button>
-                                                                        </li>
-                                                                    ))}
-                                                                </ul>
-                                                            )}
-                                                        </div>
-                                                    )}
-
-                                                    <div>
-                                                        <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">Instructions (optional)</label>
-                                                        <textarea
-                                                            value={instructions}
-                                                            onChange={e => setInstructions(e.target.value)}
-                                                            placeholder="E.g. Ring the bell, leave at door…"
-                                                            className="min-h-[80px] w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-[16px] focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500 md:min-h-[72px] md:text-sm"
-                                                        />
-                                                    </div>
-
-                                                    <button
-                                                        type="button"
-                                                        onClick={saveAddressToAccount}
-                                                        disabled={savingAddress}
-                                                        className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-green-600 py-3 text-sm font-bold text-green-700 transition-colors hover:bg-green-50 disabled:opacity-60"
+                                                    </motion.div>
+                                                ) : (
+                                                    <motion.div
+                                                        key="delivery-fields"
+                                                        initial={{ opacity: 0, height: 0 }}
+                                                        animate={{ opacity: 1, height: 'auto' }}
+                                                        exit={{ opacity: 0, height: 0 }}
+                                                        transition={{ duration: 0.25 }}
+                                                        className="space-y-4 overflow-hidden"
                                                     >
-                                                        {savingAddress ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                                                        {savingAddress ? 'Saving…' : 'Save address'}
-                                                    </button>
-                                                </motion.div>
+                                                        {mapBootstrap && (
+                                                            <CheckoutDeliveryMap
+                                                                centerLat={mapBootstrap.lat}
+                                                                centerLng={mapBootstrap.lng}
+                                                                onCenterChange={handleMapPositionChange}
+                                                                flyTo={flyToTarget}
+                                                                onFlyToComplete={() => setFlyToTarget(null)}
+                                                                className="h-[260px]"
+                                                            />
+                                                        )}
+
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleUseMyLocation}
+                                                            disabled={checkoutGpsLoading}
+                                                            className="flex w-full items-center justify-center gap-2 rounded-xl bg-green-50 py-2.5 text-sm font-semibold text-green-700 transition-colors hover:bg-green-100 disabled:opacity-60"
+                                                        >
+                                                            {checkoutGpsLoading ? (
+                                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                            ) : (
+                                                                <Navigation className="h-4 w-4" />
+                                                            )}
+                                                            {checkoutGpsLoading ? 'Getting location…' : 'Use my current location'}
+                                                        </button>
+
+                                                        <div>
+                                                            <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">Recipient name</label>
+                                                            <input
+                                                                type="text"
+                                                                value={recipientName}
+                                                                onChange={(e) => setRecipientName(e.target.value)}
+                                                                placeholder="Full name"
+                                                                autoComplete="name"
+                                                                className="h-[52px] w-full rounded-xl border border-gray-200 bg-gray-50 px-4 text-[16px] transition-shadow focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500 md:h-[48px] md:text-sm"
+                                                            />
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">Phone number</label>
+                                                            <div className="flex overflow-hidden rounded-xl border border-gray-200 bg-gray-50 focus-within:border-green-500 focus-within:ring-1 focus-within:ring-green-500">
+                                                                <span className="flex shrink-0 items-center border-r border-gray-200 bg-gray-100 px-3 text-sm font-medium text-gray-600">
+                                                                    +91
+                                                                </span>
+                                                                <input
+                                                                    type="tel"
+                                                                    inputMode="numeric"
+                                                                    value={deliveryPhone}
+                                                                    onChange={(e) => setDeliveryPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                                                                    placeholder="9876543210"
+                                                                    autoComplete="tel"
+                                                                    className="min-w-0 flex-1 bg-transparent py-3 pl-3 pr-3 text-[16px] focus:outline-none md:text-sm"
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">Save as</label>
+                                                            <div className="flex gap-2 rounded-xl bg-gray-100 p-1">
+                                                                {(['home', 'work', 'other'] as const).map((t) => (
+                                                                    <button
+                                                                        key={t}
+                                                                        type="button"
+                                                                        onClick={() => setAddressType(t)}
+                                                                        className={`flex-1 rounded-lg py-2.5 text-sm font-bold transition-all ${
+                                                                            addressType === t
+                                                                                ? 'bg-green-600 text-white shadow-sm'
+                                                                                : 'text-gray-600 hover:text-gray-900'
+                                                                        }`}
+                                                                    >
+                                                                        {ADDRESS_TYPE_LABELS[t]}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">Street / road name</label>
+                                                            <input
+                                                                type="text"
+                                                                value={streetName}
+                                                                onChange={(e) => setStreetName(e.target.value)}
+                                                                placeholder="e.g. Gandhi Road, Main Street"
+                                                                className="h-[52px] w-full rounded-xl border border-gray-200 bg-gray-50 px-4 text-[16px] transition-shadow focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500 md:h-[48px] md:text-sm"
+                                                            />
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">
+                                                                Flat / house / apartment (optional)
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                value={houseNo}
+                                                                onChange={(e) => setHouseNo(e.target.value)}
+                                                                placeholder="e.g. 12B, 2nd floor"
+                                                                className="h-[52px] w-full rounded-xl border border-gray-200 bg-gray-50 px-4 text-[16px] transition-shadow focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500 md:h-[48px] md:text-sm"
+                                                            />
+                                                        </div>
+
+                                                        {user?.id && (
+                                                            <div>
+                                                                <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">Saved addresses</label>
+                                                                {loadingSavedAddresses ? (
+                                                                    <div className="flex justify-center py-4">
+                                                                        <Loader2 className="h-6 w-6 animate-spin text-green-600" />
+                                                                    </div>
+                                                                ) : savedAddresses.length === 0 ? (
+                                                                    <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50/80 px-3 py-3 text-xs text-gray-500">
+                                                                        No saved addresses yet. Set the pin (search, recent, or GPS), fill the form, then tap Save
+                                                                        address.
+                                                                    </p>
+                                                                ) : (
+                                                                    <ul className="space-y-2">
+                                                                        {savedAddresses.map((row) => (
+                                                                            <li key={row.id}>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => applySavedAddress(row)}
+                                                                                    className="w-full rounded-xl border border-gray-200 bg-white p-3 text-left transition-colors hover:border-green-300 hover:bg-green-50/50"
+                                                                                >
+                                                                                    <div className="flex items-center justify-between gap-2">
+                                                                                        <span className="text-sm font-semibold text-gray-900">
+                                                                                            {row.recipient_name || 'Saved address'}
+                                                                                        </span>
+                                                                                        {row.address_type && (
+                                                                                            <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-green-800">
+                                                                                                {ADDRESS_TYPE_LABELS[row.address_type as AddressType] ||
+                                                                                                    row.address_type}
+                                                                                            </span>
+                                                                                        )}
+                                                                                    </div>
+                                                                                    <span className="mt-1 line-clamp-2 block text-sm text-gray-600">
+                                                                                        {row.formatted_address ||
+                                                                                            [row.locality, row.street, row.city].filter(Boolean).join(', ') ||
+                                                                                            '—'}
+                                                                                    </span>
+                                                                                    {row.phone && (
+                                                                                        <span className="mt-0.5 block text-xs text-gray-500">+91 {row.phone}</span>
+                                                                                    )}
+                                                                                </button>
+                                                                            </li>
+                                                                        ))}
+                                                                    </ul>
+                                                                )}
+                                                            </div>
+                                                        )}
+
+                                                        <div>
+                                                            <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">Instructions (optional)</label>
+                                                            <textarea
+                                                                value={instructions}
+                                                                onChange={(e) => setInstructions(e.target.value)}
+                                                                placeholder="E.g. Ring the bell, leave at door…"
+                                                                className="min-h-[80px] w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-[16px] focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500 md:min-h-[72px] md:text-sm"
+                                                            />
+                                                        </div>
+
+                                                        {user?.id && matchingSavedForPin && !loadingSavedAddresses ? (
+                                                            <div className="flex items-start gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-900">
+                                                                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-600" aria-hidden />
+                                                                <p>
+                                                                    <span className="font-semibold">Already saved.</span>{' '}
+                                                                    This pin matches your saved address
+                                                                    {matchingSavedForPin.address_type &&
+                                                                    (matchingSavedForPin.address_type === 'home' ||
+                                                                        matchingSavedForPin.address_type === 'work' ||
+                                                                        matchingSavedForPin.address_type === 'other')
+                                                                        ? ` (${ADDRESS_TYPE_LABELS[matchingSavedForPin.address_type]})`
+                                                                        : ''}
+                                                                    . You can still place the order without saving again.
+                                                                </p>
+                                                            </div>
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                onClick={saveAddressToAccount}
+                                                                disabled={savingAddress}
+                                                                className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-green-600 py-3 text-sm font-bold text-green-700 transition-colors hover:bg-green-50 disabled:opacity-60"
+                                                            >
+                                                                {savingAddress ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                                                                {savingAddress ? 'Saving…' : 'Save address'}
+                                                            </button>
+                                                        )}
+                                                    </motion.div>
+                                                )
                                             ) : (
                                                 <motion.div
                                                     key="pickup-fields"
@@ -709,14 +952,17 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
                                             )}
                                         </AnimatePresence>
 
-                                        <div className="pb-6 pt-1">
-                                            <button
+                                        <div className="pb-2 pt-1">
+                                            <motion.button
                                                 type="button"
                                                 onClick={handleContinueToPayment}
-                                                className="h-[56px] w-full rounded-xl bg-green-600 text-[16px] font-bold text-white shadow-lg shadow-green-600/20 transition-all hover:bg-green-700 active:scale-[0.98] md:h-[50px] md:text-[15px]"
+                                                whileTap={{ scale: 0.98 }}
+                                                whileHover={{ scale: 1.01 }}
+                                                transition={{ type: 'spring', stiffness: 480, damping: 28 }}
+                                                className="h-[56px] w-full rounded-xl bg-green-600 text-[16px] font-bold text-white shadow-lg shadow-green-600/20 transition-colors hover:bg-green-700 md:h-[50px] md:text-[15px]"
                                             >
                                                 Continue to payment →
-                                            </button>
+                                            </motion.button>
                                         </div>
                                     </motion.div>
                                 )}
@@ -726,20 +972,13 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
                                 {step === 2 && (
                                     <motion.div
                                         key="step2pay"
+                                        custom={slideDir}
                                         variants={slideVariants}
-                                        initial="enter" animate="center" exit="exit"
-                                        transition={{ duration: 0.3, ease: 'easeInOut' }}
-                                        className="p-5 flex flex-col gap-6"
+                                        initial="enter"
+                                        animate="center"
+                                        exit="exit"
+                                        className="flex flex-col gap-6 px-5 pb-6 pt-2"
                                     >
-                                        <button
-                                            type="button"
-                                            onClick={() => setStep(1)}
-                                            className="-mt-1 mb-1 flex items-center gap-1 self-start text-sm font-semibold text-green-700"
-                                        >
-                                            <ChevronLeft className="h-4 w-4" />
-                                            Address & delivery
-                                        </button>
-
                                         <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-4 space-y-2">
                                             <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Order summary</p>
                                             <div className="flex justify-between text-[13px]">
@@ -814,11 +1053,15 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
                                             )}
                                         </AnimatePresence>
 
-                                        <div className="pt-4 pb-6 mt-auto flex flex-col items-center">
-                                            <button
+                                        <div className="mt-auto flex flex-col items-center pb-2 pt-4">
+                                            <motion.button
+                                                type="button"
                                                 disabled={!paymentMethod || isSubmitting}
                                                 onClick={handlePlaceOrder}
-                                                className={`w-full font-bold h-[56px] md:h-[50px] text-[16px] md:text-[15px] rounded-xl transition-all shadow-lg active:scale-[0.98] flex items-center justify-center gap-2 ${!paymentMethod ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none' : 'bg-green-600 hover:bg-green-700 text-white shadow-green-600/20'}`}
+                                                whileTap={!paymentMethod || isSubmitting ? undefined : { scale: 0.98 }}
+                                                whileHover={!paymentMethod || isSubmitting ? undefined : { scale: 1.01 }}
+                                                transition={{ type: 'spring', stiffness: 480, damping: 28 }}
+                                                className={`flex h-[56px] w-full items-center justify-center gap-2 rounded-xl text-[16px] font-bold shadow-lg md:h-[50px] md:text-[15px] ${!paymentMethod ? 'cursor-not-allowed bg-gray-200 text-gray-400 shadow-none' : 'bg-green-600 text-white shadow-green-600/20 transition-colors hover:bg-green-700'}`}
                                             >
                                                 {isSubmitting ? (
                                                     <>
@@ -828,8 +1071,10 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
                                                         </svg>
                                                         Placing Order...
                                                     </>
-                                                ) : <>Place Order →</>}
-                                            </button>
+                                                ) : (
+                                                    <>Place Order →</>
+                                                )}
+                                            </motion.button>
                                             <div className="flex items-center gap-1.5 mt-3 text-gray-400">
                                                 <ShieldCheck className="w-4 h-4 text-green-500" />
                                                 <span className="text-xs font-semibold uppercase tracking-wider">Secure Checkout</span>
@@ -842,9 +1087,12 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
                                 {step === 3 && (
                                     <motion.div
                                         key="step3ok"
-                                        initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-                                        transition={{ duration: 0.4, ease: 'easeOut' }}
-                                        className="p-8 flex flex-col items-center justify-center h-full text-center pb-12"
+                                        custom={slideDir}
+                                        variants={slideVariants}
+                                        initial="enter"
+                                        animate="center"
+                                        exit="exit"
+                                        className="flex h-full flex-col items-center justify-center px-8 pb-12 pt-6 text-center"
                                     >
                                         <div className="mb-6 relative">
                                             <svg className="w-24 h-24 text-green-500" viewBox="0 0 100 100">

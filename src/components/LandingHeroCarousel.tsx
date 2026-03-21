@@ -65,9 +65,25 @@ const CARD_RADIUS_RATIO = 30 / CARD_REF_W;
 const CARD_GAP = 18;
 const SCROLL_PX_PER_SEC = 32;
 
+/** Below this width: card width is only `vw * MOBILE_WIDTH_FRAC` (no min/max). */
+const LARGE_LAYOUT_MIN_VW = 1024;
+const MOBILE_WIDTH_FRAC = 0.525;
+/** Only used when vw >= LARGE_LAYOUT_MIN_VW */
+const DESKTOP_CARD_MIN_W = 268;
+const DESKTOP_CARD_MAX_W = 340;
+const DESKTOP_WIDTH_FRAC = 0.34;
+
+function cardWidthForViewport(vw: number): number {
+    if (vw < LARGE_LAYOUT_MIN_VW) {
+        return Math.round(vw * MOBILE_WIDTH_FRAC);
+    }
+    const raw = Math.round(vw * DESKTOP_WIDTH_FRAC);
+    return Math.min(DESKTOP_CARD_MAX_W, Math.max(DESKTOP_CARD_MIN_W, raw));
+}
+
 function useCardSize() {
     const initialVw = 390;
-    const initialW = Math.min(236, Math.round(initialVw * 0.525));
+    const initialW = cardWidthForViewport(initialVw);
     const [size, setSize] = useState({
         w: initialW,
         h: Math.round(initialW * (CARD_REF_H / CARD_REF_W)),
@@ -77,7 +93,7 @@ function useCardSize() {
     useEffect(() => {
         const q = () => {
             const vw = typeof window !== "undefined" ? window.innerWidth : 390;
-            const w = Math.min(236, Math.round(vw * 0.525));
+            const w = cardWidthForViewport(vw);
             const h = Math.round(w * (CARD_REF_H / CARD_REF_W));
             const peekPad = Math.round((vw - w) / 2);
             setSize({ w, h, peekPad });

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Search, X, Loader2 } from "lucide-react";
 import { useLocation } from "../context/LocationContext.tsx";
-import { mapboxForwardGeocode } from "../lib/mapboxGeocoding.ts";
+import { isMapboxGeocodingConfigured, mapboxForwardGeocode } from "../lib/mapboxGeocoding.ts";
 
 interface Suggestion {
     displayName: string;
@@ -28,6 +28,7 @@ function highlightMatch(text: string, query: string) {
 
 async function fetchSuggestions(query: string): Promise<Suggestion[]> {
     if (query.trim().length < 2) return [];
+    if (!isMapboxGeocodingConfigured()) return [];
     const rows = await mapboxForwardGeocode(query, 8);
     return rows.map((r) => ({
         displayName: r.displayName,
@@ -125,8 +126,16 @@ export const LocationSearch: React.FC = () => {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
+    const mapboxReady = isMapboxGeocodingConfigured();
+
     return (
         <div ref={wrapperRef} className="relative w-full md:flex-1">
+            {!mapboxReady && (
+                <p className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+                    Add <code className="rounded bg-amber-100 px-1">VITE_MAPBOX_ACCESS_TOKEN</code> to enable
+                    Mapbox Search Box.
+                </p>
+            )}
             {/* Input */}
             <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -142,7 +151,8 @@ export const LocationSearch: React.FC = () => {
                     onChange={handleChange}
                     onKeyDown={handleKeyDown}
                     onFocus={() => suggestions.length > 0 && setIsOpen(true)}
-                    className="w-full border border-gray-300 focus:border-green-800 focus:ring-1 focus:ring-green-800 rounded-md py-3 pl-12 pr-10 outline-none text-gray-700 transition-all font-medium placeholder-gray-400 shadow-sm"
+                    disabled={!mapboxReady}
+                    className="w-full rounded-md border border-gray-300 py-3 pl-12 pr-10 font-medium text-gray-700 shadow-sm outline-none transition-all placeholder:text-gray-400 focus:border-green-800 focus:ring-1 focus:ring-green-800 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
                     placeholder="Search city, locality in Tamil Nadu..."
                     autoComplete="off"
                     aria-label="Search location"
