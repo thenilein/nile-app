@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence, useAnimation, useMotionValue, useTransform, animate } from "framer-motion";
 import { ShoppingBag, X, ArrowRight, Tag, ImageOff } from "lucide-react";
 import { useCart } from "../context/CartContext.tsx";
-import { CheckoutFlowContent } from "./CheckoutDrawer.tsx";
+import { CheckoutSheetContent } from "./CheckoutDrawer.tsx";
 import { CouponSection } from "./CouponSection.tsx";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -179,7 +179,7 @@ export const DeliveryProgress: React.FC<{ subtotal: number; orderType: string }>
 interface CartPanelProps {
     orderType: "delivery" | "pickup";
     onOrderTypeChange?: (t: "delivery" | "pickup") => void;
-    /** Increment (e.g. from AuthModal) to open cart drawer and start checkout. */
+    /** Increment (e.g. after login sheet) to open cart drawer and start checkout. */
     checkoutLaunchKey?: number;
     /** When true, the floating cart pill is not rendered (e.g. combined bar in Menu). */
     hideMobileFloatingBar?: boolean;
@@ -250,7 +250,7 @@ const CartPanelInner: React.FC<CartPanelProps & { mobile?: boolean; onClose?: ()
                     maxHeight: mobile ? "none" : "calc(100vh - 5.5rem)",
                 }}
             >
-                <CheckoutFlowContent
+                <CheckoutSheetContent
                     visible={checkoutActive}
                     orderType={orderType}
                     onOrderTypeChange={onOrderTypeChange}

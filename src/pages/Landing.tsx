@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from "react";
 import LandingHeroCarousel from "../components/LandingHeroCarousel.tsx";
-import LocationPickerSheet from "./location/LocationPickerSheet.tsx";
+import { LandingLocationSheet } from "../components/LandingLocationSheet.tsx";
 
 const HeroSection = () => {
     const [locationSheetOpen, setLocationSheetOpen] = useState(false);
@@ -39,19 +39,13 @@ const HeroSection = () => {
                     <button
                         type="button"
                         onClick={handleOrderNow}
-                        className="mx-auto block w-full max-w-[22rem] rounded-full bg-neutral-950 py-3.5 text-[17px] font-semibold text-white transition-transform active:scale-[0.98] sm:py-4"
+                        className="mx-auto block w-full max-w-[22rem] rounded-full bg-neutral-950 py-3.5 text-[17px] font-semibold text-white transition-transform active:scale-[0.98] hover:opacity-95 sm:py-4"
                     >
                         Order Now
                     </button>
                 </div>
 
-                <LocationPickerSheet
-                    isOpen={locationSheetOpen}
-                    onClose={() => setLocationSheetOpen(false)}
-                    title="Delivery location"
-                    subtitle="Search, pick an address, or use GPS"
-                    navigateToMenuOnSelect
-                />
+                <LandingLocationSheet isOpen={locationSheetOpen} onClose={() => setLocationSheetOpen(false)} />
             </div>
         </section>
     );

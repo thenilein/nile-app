@@ -8,8 +8,8 @@ import MenuItemCard, { Product } from "../components/MenuItemCard.tsx";
 import CartPanel from "../components/CartPanel.tsx";
 import PromoBanner from "../components/PromoBanner.tsx";
 import MenuSearch, { VegOnlyToggle } from "../components/MenuSearch.tsx";
-import LocationPickerSheet from "./location/LocationPickerSheet.tsx";
-import AuthModal from "../components/AuthModal.tsx";
+import { AccountSheet } from "../components/AccountSheet.tsx";
+import { ChangeLocationSheet } from "../components/ChangeLocationSheet.tsx";
 import { useAuth } from "../context/AuthContext.tsx";
 import { useCart } from "../context/CartContext.tsx";
 
@@ -87,7 +87,7 @@ async function fetchTopMenus(): Promise<TopMenu[]> {
 
 const Menu: React.FC = () => {
     const { locationData, nearestOutlet } = useLocation();
-    const { user, signOut } = useAuth();
+    const { user } = useAuth();
     const { totalItems } = useCart();
 
     const [categories, setCategories] = useState<Category[]>([]);
@@ -867,69 +867,12 @@ const Menu: React.FC = () => {
                 </>
             )}
 
-            <LocationPickerSheet
+            <ChangeLocationSheet
                 isOpen={isLocationPickerOpen}
                 onClose={() => setIsLocationPickerOpen(false)}
             />
 
-            <AuthModal
-                isOpen={isAccountSheetOpen && !user}
-                onClose={() => setIsAccountSheetOpen(false)}
-                variant="bottomSheet"
-            />
-
-            {isAccountSheetOpen && user && (
-                <>
-                    <button
-                        type="button"
-                        aria-label="Close account"
-                        onClick={() => setIsAccountSheetOpen(false)}
-                        className="fixed inset-0 z-[130] bg-black/40 backdrop-blur-sm"
-                    />
-                    <div
-                        className="fixed inset-x-0 bottom-0 z-[140] flex flex-col rounded-t-[28px] border-t border-[#E5E7EB] bg-white shadow-[0_-18px_48px_rgba(15,23,42,0.18)]"
-                        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 1.25rem)" }}
-                    >
-                        <div className="flex justify-center pt-3 pb-2">
-                            <div className="h-1.5 w-12 rounded-full bg-gray-200" />
-                        </div>
-                        <div className="flex items-center justify-between px-5 pb-2">
-                            <h2 className="text-[18px] font-semibold text-[#111827]">Account</h2>
-                            <button
-                                type="button"
-                                onClick={() => setIsAccountSheetOpen(false)}
-                                className="rounded-full p-2 text-gray-500 hover:bg-gray-100"
-                                aria-label="Close"
-                            >
-                                <X className="h-5 w-5" />
-                            </button>
-                        </div>
-                        <div className="px-5 pb-4">
-                            <p className="text-[14px] text-[#6B7280]">
-                                Signed in as{" "}
-                                <span className="font-medium text-[#111827]">
-                                    {user.phone ||
-                                        (user.user_metadata?.phone as string | undefined) ||
-                                        user.email ||
-                                        "Member"}
-                                </span>
-                            </p>
-                        </div>
-                        <div className="px-5">
-                            <button
-                                type="button"
-                                onClick={async () => {
-                                    await signOut();
-                                    setIsAccountSheetOpen(false);
-                                }}
-                                className="w-full rounded-xl border border-red-200 bg-red-50 py-3.5 text-[15px] font-semibold text-red-700 transition-colors hover:bg-red-100"
-                            >
-                                Sign out
-                            </button>
-                        </div>
-                    </div>
-                </>
-            )}
+            <AccountSheet isOpen={isAccountSheetOpen} onClose={() => setIsAccountSheetOpen(false)} />
 
         </>
     );

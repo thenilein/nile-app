@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Truck, Store, Banknote, CreditCard, Wallet, Smartphone, ShieldCheck, Navigation, AlertCircle, CheckCircle2, ChevronLeft, Loader2, MapPin } from 'lucide-react';
+import { X, Truck, Store, Banknote, CreditCard, Wallet, Smartphone, ShieldCheck, Navigation, CheckCircle2, ChevronLeft, Loader2, MapPin } from 'lucide-react';
 import { CouponSection } from './CouponSection';
 import { useNavigate } from 'react-router-dom';
 import confetti from 'canvas-confetti';
@@ -16,7 +16,9 @@ const CheckoutDeliveryMap = lazy(() =>
 import { mapboxReverseGeocode, mergeFormattedAddress } from '../lib/mapboxGeocoding.ts';
 import { findMatchingSavedAddress } from '../lib/addressCoordMatch.ts';
 import { resolveGpsCoordsToLocationData } from '../lib/resolveGpsToLocationData.ts';
-import { PhoneOtpAuthFlow } from './PhoneOtpAuthFlow.tsx';
+import { SheetLoginStep } from './SheetLoginStep.tsx';
+import { SheetToast, useSheetToast } from './SheetToast.tsx';
+import { sheetCapsuleIconBtn } from '../lib/sheetCapsuleStyles.ts';
 
 type AddressType = 'home' | 'work' | 'other';
 
@@ -67,23 +69,6 @@ type CheckoutStep = 0 | 1 | 2 | 3;
 const FREE_DELIVERY_THRESHOLD = 300;
 const DELIVERY_FEE = 30;
 
-// ── Toast ──────────────────────────────────────────────────────────────────────
-const Toast: React.FC<{ msg: { type: 'error' | 'success'; text: string } | null }> = ({ msg }) => (
-    <AnimatePresence>
-        {msg && (
-            <motion.div
-                initial={{ opacity: 0, y: -20, scale: 0.9 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                className={`fixed top-6 left-1/2 -translate-x-1/2 z-[200] px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 max-w-[90vw] ${msg.type === 'error' ? 'bg-red-500 text-white' : 'bg-green-600 text-white'}`}
-            >
-                {msg.type === 'error' ? <AlertCircle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
-                <span className="text-sm font-semibold">{msg.text}</span>
-            </motion.div>
-        )}
-    </AnimatePresence>
-);
-
 export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCart, onDismiss }: CheckoutFlowContentProps) {
     const { totalItems, totalPrice, items, clearCart } = useCart();
     const { user, isLoading: authLoading } = useAuth();
@@ -131,11 +116,7 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
     /** When pin matches a saved address, start collapsed (no map/inputs) until user taps Change address. */
     const [deliveryFormExpanded, setDeliveryFormExpanded] = useState(false);
 
-    const [toastMsg, setToastMsg] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
-    const showToast = useCallback((type: 'error' | 'success', text: string) => {
-        setToastMsg({ type, text });
-        setTimeout(() => setToastMsg(null), 3000);
-    }, []);
+    const { toastMsg, showToast } = useSheetToast();
 
     useLayoutEffect(() => {
         if (!visible) {
@@ -552,7 +533,7 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
 
     return (
         <>
-            <Toast msg={toastMsg} />
+            <SheetToast msg={toastMsg} zClassName="z-[200]" />
 
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
                 {step !== 3 && (
@@ -563,11 +544,10 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
                                 onClick={handleHeaderBack}
                                 whileTap={{ scale: 0.96 }}
                                 transition={{ type: 'spring', stiffness: 520, damping: 32 }}
-                                className="-ml-1 flex min-h-[44px] min-w-[44px] items-center gap-0.5 rounded-xl py-2 pl-1 pr-2 text-sm font-semibold text-green-700 transition-colors hover:bg-green-50 hover:text-green-800 md:min-h-0 md:min-w-0"
+                                className={`${sheetCapsuleIconBtn} min-h-[44px] min-w-[44px] md:min-h-9 md:w-9 md:min-w-9`}
                                 aria-label={step === 2 ? 'Back to address' : 'Back to cart'}
                             >
-                                <ChevronLeft className="h-5 w-5 shrink-0" strokeWidth={2.25} />
-                                <span>{step === 2 ? 'Address' : 'Cart'}</span>
+                                <ChevronLeft className="h-[18px] w-[18px] shrink-0" strokeWidth={2.25} />
                             </motion.button>
                             <button
                                 type="button"
@@ -615,20 +595,13 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
                                         exit="exit"
                                         className="flex flex-col gap-5 px-5 pb-6 pt-2"
                                     >
-                                        {authLoading ? (
-                                            <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
-                                                <Loader2 className="h-10 w-10 animate-spin text-green-600" />
-                                                <p className="text-sm font-medium text-gray-600">Checking your session…</p>
-                                            </div>
-                                        ) : (
-                                            <PhoneOtpAuthFlow
-                                                active={visible && step === 0 && !authLoading}
-                                                showToast={showToast}
-                                                variant="embedded"
-                                                syncPendingCheckoutEvent={false}
-                                                onAuthenticated={() => transitionTo(1, 1)}
-                                            />
-                                        )}
+                                        <SheetLoginStep
+                                            active={visible && step === 0}
+                                            authLoading={authLoading}
+                                            showToast={showToast}
+                                            syncPendingCheckoutEvent={false}
+                                            onAuthenticated={() => transitionTo(1, 1)}
+                                        />
                                     </motion.div>
                                 )}
 
@@ -1138,3 +1111,6 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
         </>
     );
 }
+
+/** Same implementation as {@link CheckoutFlowContent}; name aligns with other customer-facing sheets. */
+export { CheckoutFlowContent as CheckoutSheetContent };

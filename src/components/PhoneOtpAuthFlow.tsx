@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
 import { AlertCircle } from "lucide-react";
-import OtpVerification from "../pages/OtpVerification.tsx";
+import OtpVerification from "./OtpVerification.tsx";
 import ProfileCompletionForm from "./ProfileCompletionForm.tsx";
 import {
     completeProfile as completeProfileCore,
@@ -23,6 +23,8 @@ export type PhoneOtpAuthFlowProps = {
      * (same behavior as the legacy account modal).
      */
     syncPendingCheckoutEvent?: boolean;
+    /** When set, phone step shows a skip control (e.g. continue as guest). */
+    onGuestSkip?: () => void;
 };
 
 const subStepVariants: Variants = {
@@ -55,6 +57,7 @@ export const PhoneOtpAuthFlow: React.FC<PhoneOtpAuthFlowProps> = ({
     onAuthenticated,
     variant = "embedded",
     syncPendingCheckoutEvent = false,
+    onGuestSkip,
 }) => {
     const isSheet = variant === "sheet";
     const [phone, setPhone] = useState("");
@@ -218,29 +221,34 @@ export const PhoneOtpAuthFlow: React.FC<PhoneOtpAuthFlowProps> = ({
                                 <h2 className="mb-2 text-[26px] font-bold tracking-tight text-gray-900">Welcome</h2>
                                 <p className="text-sm text-gray-500">Enter your phone number to continue</p>
                             </div>
-                        ) : (
-                            <p className="mb-4 text-sm leading-relaxed text-gray-600">
-                                Enter your mobile number. We&apos;ll send a one-time code to verify it.
-                            </p>
-                        )}
+                        ) : null}
 
-                        <div className={`flex flex-1 flex-col ${isSheet ? "space-y-6" : "space-y-4"}`}>
+                        <div
+                            className={`flex flex-col ${isSheet ? "flex-1 space-y-6" : "space-y-4"}`}
+                        >
                             <div>
-                                {!isSheet && (
-                                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">
-                                        Mobile number
-                                    </label>
-                                )}
                                 <motion.div
                                     animate={shakeInput ? shakeAnimation : {}}
-                                    className={`relative flex h-14 items-center overflow-hidden rounded-xl border-[1.5px] bg-white transition-all duration-200 focus-within:ring-4 focus-within:ring-green-500/20 ${
-                                        error ? "border-red-500" : "border-gray-200 focus-within:border-green-600"
-                                    }`}
+                                    className={
+                                        isSheet
+                                            ? `relative flex h-14 min-h-[52px] items-center overflow-hidden rounded-xl border-[1.5px] bg-white transition-all duration-200 focus-within:ring-4 focus-within:ring-green-500/20 ${
+                                                  error ? "border-red-500" : "border-gray-200 focus-within:border-green-600"
+                                              }`
+                                            : `relative flex min-h-[52px] w-full items-center overflow-hidden rounded-full border border-gray-300/95 bg-neutral-50 transition-all duration-200 focus-within:border-gray-400 focus-within:bg-white focus-within:shadow-[0_0_0_3px_rgba(0,0,0,0.05)] ${
+                                                  error ? "border-red-500" : ""
+                                              }`
+                                    }
                                 >
-                                    <div className="flex h-full select-none items-center justify-center border-r border-gray-100 bg-gray-50/50 px-4">
-                                        <span className="mr-1.5 text-lg leading-none">🇮🇳</span>
-                                        <span className="text-[17px] font-semibold text-gray-500">+91</span>
-                                    </div>
+                                    {isSheet ? (
+                                        <div className="flex h-full select-none items-center justify-center border-r border-gray-100 bg-gray-50/50 px-4">
+                                            <span className="mr-1.5 text-lg leading-none">🇮🇳</span>
+                                            <span className="text-[17px] font-semibold text-gray-500">+91</span>
+                                        </div>
+                                    ) : (
+                                        <span className="flex h-full shrink-0 select-none items-center border-r border-gray-300/80 bg-gray-100/80 px-3.5 text-[17px] font-semibold tabular-nums text-gray-500">
+                                            +91
+                                        </span>
+                                    )}
                                     <input
                                         type="tel"
                                         inputMode="numeric"
@@ -250,7 +258,11 @@ export const PhoneOtpAuthFlow: React.FC<PhoneOtpAuthFlowProps> = ({
                                         onChange={handlePhoneChange}
                                         onPaste={handlePaste}
                                         onKeyDown={handleKeyPress}
-                                        className="block h-full w-full bg-transparent pl-4 pr-3 text-[18px] font-semibold tracking-wide text-gray-900 caret-green-600 outline-none placeholder-transparent focus:placeholder-gray-300"
+                                        className={`min-h-0 min-w-0 flex-1 bg-transparent py-3 text-[18px] font-semibold tracking-wide text-gray-900 caret-green-600 outline-none ${
+                                            isSheet
+                                                ? "pl-4 pr-3 placeholder-transparent focus:placeholder-gray-300"
+                                                : "pl-3 pr-4 placeholder:text-[17px] placeholder:font-medium placeholder:text-gray-400"
+                                        }`}
                                         placeholder="98765 43210"
                                     />
                                 </motion.div>
@@ -264,12 +276,14 @@ export const PhoneOtpAuthFlow: React.FC<PhoneOtpAuthFlowProps> = ({
                                 </div>
                             </div>
 
-                            <div className={isSheet ? "mt-auto pt-4" : ""}>
+                            <div className={isSheet ? "mt-auto pt-4" : "pt-1"}>
                                 <button
                                     type="button"
                                     onClick={handleSendOtp}
                                     disabled={loading || phone.length !== 10}
-                                    className="flex w-full items-center justify-center rounded-xl px-4 py-3.5 text-[15px] font-bold shadow-sm transition-all duration-300 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400 not-disabled:bg-green-600 not-disabled:text-white not-disabled:hover:bg-green-700 not-disabled:hover:shadow-md not-disabled:active:scale-[0.98]"
+                                    className={`flex w-full items-center justify-center px-4 py-3.5 text-[15px] font-bold shadow-sm transition-all duration-300 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400 not-disabled:bg-green-600 not-disabled:text-white not-disabled:hover:bg-green-700 not-disabled:hover:shadow-md not-disabled:active:scale-[0.98] ${
+                                        isSheet ? "rounded-xl" : "rounded-full"
+                                    }`}
                                 >
                                     {loading ? (
                                         <span className="flex items-center gap-2">
@@ -280,6 +294,15 @@ export const PhoneOtpAuthFlow: React.FC<PhoneOtpAuthFlowProps> = ({
                                         phonePrimaryLabel
                                     )}
                                 </button>
+                                {onGuestSkip && (
+                                    <button
+                                        type="button"
+                                        onClick={onGuestSkip}
+                                        className="mt-4 w-full py-2 text-[15px] font-semibold text-gray-500 transition-colors hover:text-gray-800"
+                                    >
+                                        Skip for now
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </motion.div>

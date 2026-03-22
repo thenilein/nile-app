@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Smartphone, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import OtpVerification from './OtpVerification';
+import OtpVerification from '../components/OtpVerification';
 import ProfileCompletionForm from '../components/ProfileCompletionForm';
 import {
     completeProfile as completeProfileCore,
