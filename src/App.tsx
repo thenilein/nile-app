@@ -23,7 +23,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { LocationProvider } from "./context/LocationContext";
 import { CartProvider } from "./context/CartContext";
 import { AdminProvider } from "./context/AdminContext";
-import { supabase } from "./lib/supabase";
+import { isUserAdmin } from "./lib/adminRole";
 
 // ─── Route Guards ──────────────────────────────────────────────────────────────
 
@@ -35,11 +35,9 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
 
     useEffect(() => {
         const check = async () => {
-            if (user) {
-                try {
-                    const { data } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-                    if (data?.role === 'admin') { setIsAdmin(true); return; }
-                } catch (_) { /* fall through */ }
+            if (user && await isUserAdmin(user.id)) {
+                setIsAdmin(true);
+                return;
             }
             setIsAdmin(false);
         };

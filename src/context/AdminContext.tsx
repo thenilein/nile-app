@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
+import { isUserAdmin } from '../lib/adminRole.ts';
 
 interface Notification {
     id: string;
@@ -33,12 +34,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     useEffect(() => {
         const check = async () => {
             if (!user) { setIsAdmin(false); setIsCheckingAdmin(false); return; }
-            const { data } = await supabase
-                .from('profiles')
-                .select('role')
-                .eq('id', user.id)
-                .single();
-            setIsAdmin(data?.role === 'admin');
+            setIsAdmin(await isUserAdmin(user.id));
             setIsCheckingAdmin(false);
         };
         check();

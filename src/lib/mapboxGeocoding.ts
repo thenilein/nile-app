@@ -250,15 +250,3 @@ export async function mapboxReverseGeocode(lat: number, lon: number): Promise<Ge
     return parseMapboxFeature(f, { preferFullPlaceName: true });
 }
 
-/** Shape expected by checkout flow location list + handleSelectLocation. */
-export async function mapboxCheckoutLocationResults(
-    query: string
-): Promise<Array<{ place_id: string; display_name: string; lat: string; lon: string }>> {
-    const suggestions = await mapboxForwardGeocode(query, 4);
-    return suggestions.map((s) => ({
-        place_id: s.id,
-        display_name: s.displayName,
-        lat: String(s.latitude),
-        lon: String(s.longitude),
-    }));
-}

@@ -1,3 +1,3 @@
-1.) run npm install
-2.) run npm install @supabase/supabase-js
-3.) add supabase url & anon key
+1. Run `npm install`
+2. Add your Supabase and Mapbox env vars
+3. Start the app with `npm run dev`

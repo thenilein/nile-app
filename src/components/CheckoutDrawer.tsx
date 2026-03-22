@@ -9,6 +9,17 @@ import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { useLocation } from '../context/LocationContext';
 import { DEFAULT_CHECKOUT_MAP_CENTER } from '../lib/checkoutMapConstants.ts';
+import { computeOrderPricing } from '../lib/pricing.ts';
+import {
+    fetchUserSavedAddresses,
+    isSavedAddressType,
+    savedAddressToLocation,
+    type SavedAddressRow,
+} from '../lib/savedAddresses.ts';
+import {
+    sheetHorizontalSlideVariants,
+    sheetTitleSlideVariants,
+} from '../lib/sheetMotion.ts';
 
 const CheckoutDeliveryMap = lazy(() =>
     import('./CheckoutDeliveryMap.tsx').then((m) => ({ default: m.CheckoutDeliveryMap })),
@@ -21,20 +32,6 @@ import { SheetToast, useSheetToast } from './SheetToast.tsx';
 import { sheetCapsuleIconBtn } from '../lib/sheetCapsuleStyles.ts';
 
 type AddressType = 'home' | 'work' | 'other';
-
-type SavedAddressRow = {
-    id: string;
-    formatted_address: string | null;
-    latitude: number | null;
-    longitude: number | null;
-    street: string | null;
-    locality: string | null;
-    city: string | null;
-    state: string | null;
-    recipient_name: string | null;
-    phone: string | null;
-    address_type: string | null;
-};
 
 const ADDRESS_TYPE_LABELS: Record<AddressType, string> = {
     home: 'Home',
@@ -65,9 +62,6 @@ type PaymentMethod = 'cash' | 'upi' | 'card' | 'wallet';
 
 /** 0 sign-in → 1 address → 2 payment → 3 confirmation */
 type CheckoutStep = 0 | 1 | 2 | 3;
-
-const FREE_DELIVERY_THRESHOLD = 300;
-const DELIVERY_FEE = 30;
 
 export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCart, onDismiss }: CheckoutFlowContentProps) {
     const { totalItems, totalPrice, items, clearCart } = useCart();
@@ -163,20 +157,14 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
     useEffect(() => {
         if (!visible || step !== 1 || !user?.id) {
             setSavedAddresses([]);
+            setLoadingSavedAddresses(false);
             return;
         }
         let cancelled = false;
         (async () => {
             setLoadingSavedAddresses(true);
-            const { data, error } = await supabase
-                .from("addresses")
-                .select(
-                    "id, formatted_address, latitude, longitude, street, locality, city, state, recipient_name, phone, address_type"
-                )
-                .or(`user_id.eq.${user.id},profile_id.eq.${user.id}`)
-                .order("created_at", { ascending: false })
-                .limit(12);
-            if (!cancelled && !error && data) setSavedAddresses(data as SavedAddressRow[]);
+            const data = await fetchUserSavedAddresses(user.id);
+            if (!cancelled) setSavedAddresses(data);
             if (!cancelled) setLoadingSavedAddresses(false);
         })();
         return () => {
@@ -222,19 +210,13 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
     }, [visible, orderType]);
 
     const applySavedAddress = useCallback((row: SavedAddressRow) => {
-        if (row.latitude == null || row.longitude == null) return;
-        const lat = row.latitude;
-        const lng = row.longitude;
-        setLocationData({
-            latitude: lat,
-            longitude: lng,
-            city: row.city || "",
-            state: row.state || "",
-            displayName: row.formatted_address || `${row.street || ""}, ${row.city || ""}`.replace(/^,\s*|,\s*$/g, "").trim() || "Saved address",
-        });
+        const location = savedAddressToLocation(row);
+        if (!location) return;
+        const { latitude: lat, longitude: lng } = location;
+        setLocationData(location);
         if (row.recipient_name) setRecipientName(row.recipient_name);
         if (row.phone) setDeliveryPhone(normalizeIndiaPhone(row.phone));
-        if (row.address_type === 'home' || row.address_type === 'work' || row.address_type === 'other') {
+        if (isSavedAddressType(row.address_type)) {
             setAddressType(row.address_type);
         }
         if (row.street) setStreetName(row.street);
@@ -353,15 +335,7 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
                 displayName: formattedAddress,
             });
             showToast("success", "Address saved");
-            const { data } = await supabase
-                .from("addresses")
-                .select(
-                    "id, formatted_address, latitude, longitude, street, locality, city, state, recipient_name, phone, address_type"
-                )
-                .or(`user_id.eq.${user.id},profile_id.eq.${user.id}`)
-                .order("created_at", { ascending: false })
-                .limit(12);
-            if (data) setSavedAddresses(data as SavedAddressRow[]);
+            setSavedAddresses(await fetchUserSavedAddresses(user.id));
         } catch {
             showToast("error", "Could not save address");
         } finally {
@@ -478,46 +452,12 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
         }
     };
 
-    const gst = Math.round(totalPrice * 0.05);
-    const delFee = deliveryType === 'delivery' ? (totalPrice >= FREE_DELIVERY_THRESHOLD ? 0 : DELIVERY_FEE) : 0;
-    const discountAmt = Math.round(couponCode ? couponDiscount : 0);
-    const grandTotal = Math.round(totalPrice) + gst + delFee - discountAmt;
-
-    const easeSmooth = [0.22, 1, 0.36, 1] as const;
-
-    const slideVariants = {
-        enter: (dir: number) => ({
-            x: dir > 0 ? '100%' : '-100%',
-            opacity: 0,
-        }),
-        center: {
-            x: 0,
-            opacity: 1,
-            transition: { duration: 0.38, ease: easeSmooth },
-        },
-        exit: (dir: number) => ({
-            x: dir > 0 ? '-100%' : '100%',
-            opacity: 0,
-            transition: { duration: 0.3, ease: easeSmooth },
-        }),
-    };
-
-    const titleVariants = {
-        initial: (dir: number) => ({
-            opacity: 0,
-            y: dir > 0 ? 10 : -8,
-        }),
-        animate: {
-            opacity: 1,
-            y: 0,
-            transition: { duration: 0.32, ease: easeSmooth },
-        },
-        exit: (dir: number) => ({
-            opacity: 0,
-            y: dir > 0 ? -8 : 8,
-            transition: { duration: 0.22, ease: easeSmooth },
-        }),
-    };
+    const {
+        gst,
+        deliveryFee: delFee,
+        discountAmt,
+        grandTotal,
+    } = computeOrderPricing(totalPrice, deliveryType, couponDiscount, Boolean(couponCode));
 
     const handleHeaderBack = useCallback(() => {
         if (step === 2) {
@@ -562,7 +502,7 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
                             <motion.h2
                                 key={step}
                                 custom={slideDir}
-                                variants={titleVariants}
+                                variants={sheetTitleSlideVariants}
                                 initial="initial"
                                 animate="animate"
                                 exit="exit"
@@ -589,7 +529,7 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
                                     <motion.div
                                         key="step0signin"
                                         custom={slideDir}
-                                        variants={slideVariants}
+                                        variants={sheetHorizontalSlideVariants}
                                         initial="enter"
                                         animate="center"
                                         exit="exit"
@@ -610,7 +550,7 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
                                     <motion.div
                                         key="step1"
                                         custom={slideDir}
-                                        variants={slideVariants}
+                                        variants={sheetHorizontalSlideVariants}
                                         initial="enter"
                                         animate="center"
                                         exit="exit"
@@ -958,7 +898,7 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
                                     <motion.div
                                         key="step2pay"
                                         custom={slideDir}
-                                        variants={slideVariants}
+                                        variants={sheetHorizontalSlideVariants}
                                         initial="enter"
                                         animate="center"
                                         exit="exit"
@@ -1073,7 +1013,7 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
                                     <motion.div
                                         key="step3ok"
                                         custom={slideDir}
-                                        variants={slideVariants}
+                                        variants={sheetHorizontalSlideVariants}
                                         initial="enter"
                                         animate="center"
                                         exit="exit"

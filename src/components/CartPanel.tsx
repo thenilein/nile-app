@@ -4,10 +4,7 @@ import { ShoppingBag, X, ArrowRight, Tag, ImageOff } from "lucide-react";
 import { useCart } from "../context/CartContext.tsx";
 import { CheckoutSheetContent } from "./CheckoutDrawer.tsx";
 import { CouponSection } from "./CouponSection.tsx";
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-const DELIVERY_FEE = 30;
-const FREE_DELIVERY_THRESHOLD = 300;
+import { computeOrderPricing, FREE_DELIVERY_THRESHOLD } from "../lib/pricing.ts";
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -217,12 +214,12 @@ const CartPanelInner: React.FC<CartPanelProps & { mobile?: boolean; onClose?: ()
         }
     }, [totalItems, bagControls]);
 
-    const subtotal = Math.round(totalPrice);
-    const gst = Math.round(subtotal * 0.05);
-    const deliveryFee =
-        orderType === "delivery" ? (subtotal >= FREE_DELIVERY_THRESHOLD ? 0 : DELIVERY_FEE) : 0;
-    const discountAmt = Math.round(couponCode ? couponDiscount : 0);
-    const grandTotal = subtotal + gst + deliveryFee - discountAmt;
+    const { subtotal, gst, deliveryFee, discountAmt, grandTotal } = computeOrderPricing(
+        totalPrice,
+        orderType,
+        couponDiscount,
+        Boolean(couponCode)
+    );
 
     const handleApplyCoupon = (code: string, discount: number) => {
         if (!code) {
@@ -471,10 +468,7 @@ const MobileCartDrawer: React.FC<CartPanelProps> = ({
         }
     }, [totalItems, badgeControls]);
 
-    const subtotal = Math.round(totalPrice);
-    const gst = Math.round(subtotal * 0.05);
-    const deliveryFee = orderType === "delivery" ? (subtotal >= FREE_DELIVERY_THRESHOLD ? 0 : DELIVERY_FEE) : 0;
-    const grandTotal = subtotal + gst + deliveryFee;
+    const { subtotal, gst, deliveryFee, grandTotal } = computeOrderPricing(totalPrice, orderType);
 
     const showPill = totalItems > 0 && !hideMobileFloatingBar;
 
