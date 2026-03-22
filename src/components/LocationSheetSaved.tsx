@@ -2,13 +2,41 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Home, Loader2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.tsx";
 import { useLocation, type LocationData } from "../context/LocationContext.tsx";
-import {
-    fetchUserSavedAddresses,
-    savedAddressToLocation,
-    savedAddressTypeLabel,
-    type SavedAddressRow,
-} from "../lib/savedAddresses.ts";
+import { supabase } from "../lib/supabase.ts";
 import { LocationSheetInsetList } from "./LocationSheetInsetList.tsx";
+
+type SavedAddressRow = {
+    id: string;
+    formatted_address: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    street: string | null;
+    locality: string | null;
+    city: string | null;
+    state: string | null;
+    address_type: string | null;
+};
+
+function savedRowToLocation(row: SavedAddressRow): LocationData | null {
+    if (row.latitude == null || row.longitude == null) return null;
+    const displayName =
+        row.formatted_address?.trim() ||
+        [row.street, row.locality, row.city, row.state].filter(Boolean).join(", ") ||
+        "Saved address";
+    return {
+        latitude: row.latitude,
+        longitude: row.longitude,
+        city: row.city ?? "",
+        state: row.state ?? "",
+        displayName,
+    };
+}
+
+function addressTypeLabel(t: string | null): string {
+    if (t === "home") return "Home";
+    if (t === "work") return "Work";
+    return "Saved";
+}
 
 /** Saved addresses from Supabase when user is signed in. */
 export const LocationSheetSaved: React.FC<{ active: boolean }> = ({ active }) => {
@@ -25,8 +53,15 @@ export const LocationSheetSaved: React.FC<{ active: boolean }> = ({ active }) =>
         let cancelled = false;
         (async () => {
             setLoadingSaved(true);
-            const data = await fetchUserSavedAddresses(user.id);
-            if (!cancelled) setSavedAddresses(data);
+            const { data, error } = await supabase
+                .from("addresses")
+                .select(
+                    "id, formatted_address, latitude, longitude, street, locality, city, state, address_type"
+                )
+                .or(`user_id.eq.${user.id},profile_id.eq.${user.id}`)
+                .order("created_at", { ascending: false })
+                .limit(12);
+            if (!cancelled && !error && data) setSavedAddresses(data as SavedAddressRow[]);
             if (!cancelled) setLoadingSaved(false);
         })();
         return () => {
@@ -44,15 +79,12 @@ export const LocationSheetSaved: React.FC<{ active: boolean }> = ({ active }) =>
     const listItems = useMemo(() => {
         return savedAddresses
             .map((row) => {
-                const loc = savedAddressToLocation(row);
+                const loc = savedRowToLocation(row);
                 if (!loc) return null;
                 return {
                     id: row.id,
                     title: loc.displayName,
-                    subtitle: savedAddressTypeLabel(row.address_type, {
-                        otherLabel: "Saved",
-                        unknownLabel: "Saved",
-                    }),
+                    subtitle: addressTypeLabel(row.address_type),
                     icon: <Home className="size-4" strokeWidth={2} aria-hidden />,
                     onSelect: () => pickLocation(loc),
                 };

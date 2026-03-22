@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { motion, useMotionValue, useReducedMotion } from "framer-motion";
 import { Check, Crown } from "lucide-react";
 
-type HeroBanner = {
+export type HeroBanner = {
     id: string;
     title: string;
     meta: string;
@@ -115,7 +115,7 @@ const appleCardRing: React.CSSProperties = {
   `.replace(/\s+/g, " "),
 };
 
-const LandingHeroCarousel: React.FC = () => {
+export const LandingHeroCarousel: React.FC = () => {
     const reduceMotion = useReducedMotion();
     const { w: CARD_W, h: CARD_H, peekPad } = useCardSize();
     const r = Math.max(26, Math.round(CARD_W * CARD_RADIUS_RATIO));

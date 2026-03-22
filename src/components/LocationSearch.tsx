@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Search, X, Loader2 } from "lucide-react";
 import { useLocation } from "../context/LocationContext.tsx";
+import { isMapboxGeocodingConfigured, mapboxForwardGeocode } from "../lib/mapboxGeocoding.ts";
 
 interface Suggestion {
     displayName: string;
@@ -27,43 +28,18 @@ function highlightMatch(text: string, query: string) {
 
 async function fetchSuggestions(query: string): Promise<Suggestion[]> {
     if (query.trim().length < 2) return [];
-    const url = new URL("https://nominatim.openstreetmap.org/search");
-    url.searchParams.set("q", `${query}, Tamil Nadu`);
-    url.searchParams.set("countrycodes", "in");
-    url.searchParams.set("addressdetails", "1");
-    url.searchParams.set("format", "json");
-    url.searchParams.set("limit", "8");
-
-    const res = await fetch(url.toString(), { headers: { "Accept-Language": "en" } });
-    if (!res.ok) return [];
-    const data = await res.json();
-
-    const results: Suggestion[] = [];
-    const seen = new Set<string>();
-
-    for (const item of data) {
-        const addr = item.address || {};
-        const state: string = addr.state || "";
-        if (state.toLowerCase() !== "tamil nadu") continue;
-
-        const city: string =
-            addr.city || addr.town || addr.village || addr.county || addr.suburb || "";
-        const displayName = city ? `${city}, Tamil Nadu` : `${item.display_name}`;
-        if (seen.has(displayName)) continue;
-        seen.add(displayName);
-
-        results.push({
-            displayName,
-            city,
-            state: "Tamil Nadu",
-            latitude: parseFloat(item.lat),
-            longitude: parseFloat(item.lon),
-        });
-    }
-    return results;
+    if (!isMapboxGeocodingConfigured()) return [];
+    const rows = await mapboxForwardGeocode(query, 8);
+    return rows.map((r) => ({
+        displayName: r.displayName,
+        city: r.city,
+        state: r.state,
+        latitude: r.latitude,
+        longitude: r.longitude,
+    }));
 }
 
-const LocationSearch: React.FC = () => {
+export const LocationSearch: React.FC = () => {
     const { setLocationData, clearLocation } = useLocation();
 
     const [query, setQuery] = useState("");
@@ -150,8 +126,16 @@ const LocationSearch: React.FC = () => {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
+    const mapboxReady = isMapboxGeocodingConfigured();
+
     return (
         <div ref={wrapperRef} className="relative w-full md:flex-1">
+            {!mapboxReady && (
+                <p className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+                    Add <code className="rounded bg-amber-100 px-1">VITE_MAPBOX_ACCESS_TOKEN</code> to enable
+                    Mapbox Search Box.
+                </p>
+            )}
             {/* Input */}
             <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -167,7 +151,8 @@ const LocationSearch: React.FC = () => {
                     onChange={handleChange}
                     onKeyDown={handleKeyDown}
                     onFocus={() => suggestions.length > 0 && setIsOpen(true)}
-                    className="w-full border border-gray-300 focus:border-green-800 focus:ring-1 focus:ring-green-800 rounded-md py-3 pl-12 pr-10 outline-none text-gray-700 transition-all font-medium placeholder-gray-400 shadow-sm"
+                    disabled={!mapboxReady}
+                    className="w-full rounded-md border border-gray-300 py-3 pl-12 pr-10 font-medium text-gray-700 shadow-sm outline-none transition-all placeholder:text-gray-400 focus:border-green-800 focus:ring-1 focus:ring-green-800 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
                     placeholder="Search city, locality in Tamil Nadu..."
                     autoComplete="off"
                     aria-label="Search location"

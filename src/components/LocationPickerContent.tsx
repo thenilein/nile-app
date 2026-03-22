@@ -4,7 +4,7 @@ import { LocationSheetCurrentLocation } from "./LocationSheetCurrentLocation.tsx
 import { LocationSheetRecent } from "./LocationSheetRecent.tsx";
 import { LocationSheetSaved } from "./LocationSheetSaved.tsx";
 
-type LocationPickerContentProps = {
+export type LocationPickerContentProps = {
     /** When the host sheet is open; drives recents/saved refresh behavior */
     active: boolean;
     className?: string;

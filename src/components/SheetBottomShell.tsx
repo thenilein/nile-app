@@ -2,7 +2,7 @@ import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 
-const sheetBottomSlideVariants = {
+export const sheetBottomSlideVariants = {
     hidden: { y: "100%" },
     visible: {
         y: 0,
@@ -11,7 +11,7 @@ const sheetBottomSlideVariants = {
     exit: { y: "100%", transition: { duration: 0.22, ease: [0.4, 0, 1, 1] as const } },
 };
 
-type SheetBottomShellProps = {
+export type SheetBottomShellProps = {
     isOpen: boolean;
     onClose: () => void;
     /**

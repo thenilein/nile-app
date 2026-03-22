@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, MapPin, Store, Truck, X } from "lucide-react";
+import { ChevronDown, MapPin, ShoppingBag, Store, Truck, User, X } from "lucide-react";
 import { motion } from "framer-motion";
 import { supabase } from "../lib/supabase.ts";
 import { useLocation } from "../context/LocationContext.tsx";
@@ -7,9 +7,11 @@ import MenuSidebar from "../components/MenuSidebar.tsx";
 import MenuItemCard, { Product } from "../components/MenuItemCard.tsx";
 import CartPanel from "../components/CartPanel.tsx";
 import PromoBanner from "../components/PromoBanner.tsx";
-import MenuSearch from "../components/MenuSearch.tsx";
-import CheckoutDrawer from "../components/CheckoutDrawer.tsx";
-import LocationSearch from "../components/LocationSearch.tsx";
+import MenuSearch, { VegOnlyToggle } from "../components/MenuSearch.tsx";
+import { AccountSheet } from "../components/AccountSheet.tsx";
+import { ChangeLocationSheet } from "../components/ChangeLocationSheet.tsx";
+import { useAuth } from "../context/AuthContext.tsx";
+import { useCart } from "../context/CartContext.tsx";
 
 interface Category {
     id: string;
@@ -84,7 +86,9 @@ async function fetchTopMenus(): Promise<TopMenu[]> {
 }
 
 const Menu: React.FC = () => {
-    const { locationData, nearestOutlet, getCurrentLocation } = useLocation();
+    const { locationData, nearestOutlet } = useLocation();
+    const { user } = useAuth();
+    const { totalItems } = useCart();
 
     const [categories, setCategories] = useState<Category[]>([]);
     const [menus, setMenus] = useState<TopMenu[]>([]);
@@ -97,10 +101,11 @@ const Menu: React.FC = () => {
     const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
     const [vegOnly, setVegOnly] = useState(false);
-    const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+    const [checkoutLaunchKey, setCheckoutLaunchKey] = useState(0);
     const [isCategoryDrawerOpen, setIsCategoryDrawerOpen] = useState(false);
-    const [mobileNavigatorView, setMobileNavigatorView] = useState<"menus" | "categories">("menus");
+    const [mobileCartDrawerOpen, setMobileCartDrawerOpen] = useState(false);
     const [isLocationPickerOpen, setIsLocationPickerOpen] = useState(false);
+    const [isAccountSheetOpen, setIsAccountSheetOpen] = useState(false);
 
     const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -112,12 +117,15 @@ const Menu: React.FC = () => {
     const overlayOpenRef = useRef(false);
 
     useEffect(() => {
-        overlayOpenRef.current = Boolean(isCheckoutOpen || isCategoryDrawerOpen || isLocationPickerOpen);
-    }, [isCheckoutOpen, isCategoryDrawerOpen, isLocationPickerOpen]);
+        overlayOpenRef.current = Boolean(
+            isCategoryDrawerOpen || isLocationPickerOpen || isAccountSheetOpen || mobileCartDrawerOpen
+        );
+    }, [isCategoryDrawerOpen, isLocationPickerOpen, isAccountSheetOpen, mobileCartDrawerOpen]);
 
     useEffect(() => {
         const handleOpenCheckout = () => {
-            setIsCheckoutOpen(true);
+            setMobileCartDrawerOpen(true);
+            setCheckoutLaunchKey((k) => k + 1);
         };
         window.addEventListener("open-checkout", handleOpenCheckout);
         return () => window.removeEventListener("open-checkout", handleOpenCheckout);
@@ -225,7 +233,6 @@ const Menu: React.FC = () => {
     const displayedMenuGroups = menuGroups;
     const activeMenuGroup = menuGroups.find((group) => group.id === activeMenuId) || menuGroups[0] || null;
     const activeCategory = categories.find((category) => category.id === activeCategoryId) || null;
-    const activeMenuLabel = activeMenuGroup?.name || "Menus";
     const activeCategoryLabel = activeCategory?.name || activeMenuGroup?.categories[0]?.name || "Categories";
 
     const categoryToMenuId = useMemo(() => {
@@ -329,8 +336,7 @@ const Menu: React.FC = () => {
         }
     }, [menuGroups, scrollToCategory]);
 
-    const openMobileNavigator = useCallback((view: "menus" | "categories") => {
-        setMobileNavigatorView(view);
+    const openCategorySheet = useCallback(() => {
         setIsCategoryDrawerOpen(true);
     }, []);
 
@@ -378,8 +384,80 @@ const Menu: React.FC = () => {
     }, [isLocationPickerOpen, locationKey]);
 
     const storeName = nearestOutlet?.name || "Nile Ice Creams";
-    const storeMeta = nearestOutlet?.address || locationData?.displayName || "Freshly scooped favourites near you";
-    const locationLabel = locationData?.displayName || nearestOutlet?.city || "Choose your delivery location";
+    // User-visible subtitle should reflect the user's selected location, not the outlet address.
+    const storeMeta = locationData?.displayName || "Freshly scooped favourites near you";
+
+    const LOCATION_PLACEHOLDER = "Choose your delivery location";
+
+    const { locationCityLine, locationAddressLine } = useMemo(() => {
+        const stripRedundantCityFromAddress = (city: string, addr: string): string => {
+            const c = city.trim();
+            const a = addr.trim();
+            if (!c || !a || city === LOCATION_PLACEHOLDER) return addr;
+            const cLow = c.toLowerCase();
+            const aLow = a.toLowerCase();
+            if (aLow === cLow) return "";
+            if (!aLow.startsWith(cLow)) return a;
+            let rest = a.slice(c.length).trim();
+            rest = rest.replace(/^([,;\-–—]\s*)+/, "").trim();
+            if (!rest || rest.toLowerCase() === cLow) return "";
+            return rest;
+        };
+
+        const outlet = nearestOutlet;
+        const loc = locationData;
+        const dn = loc?.displayName?.trim() || "";
+        const outletNameLower = outlet?.name?.trim().toLowerCase() || "";
+        const dnLower = dn.toLowerCase();
+
+        let city =
+            loc?.city?.trim() ||
+            outlet?.city?.trim() ||
+            "";
+        if (!city && dn.includes(",")) {
+            city = dn.split(",")[0]?.trim() || "";
+        }
+
+        // Single-line displayName is usually a full label or venue — not the city row.
+        // For address, prefer the user's selected location (`locationData`), not outlet address.
+        let addressLine = "";
+        if (loc && dn) {
+            if (dn.includes(",")) {
+                const escaped = city.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                const rest =
+                    city && dn
+                        ? dn.replace(new RegExp(`^${escaped}\\s*,\\s*`, "i"), "").trim()
+                        : dn.split(",").slice(1).join(",").trim();
+                addressLine = (rest && rest.toLowerCase() !== city.toLowerCase() ? rest : "") || loc.state?.trim() || "";
+            } else if (!outletNameLower || dnLower !== outletNameLower) {
+                // Avoid showing outlet/shop title as "address" when displayName is just a venue name.
+                addressLine = dn;
+            }
+        } else if (outlet?.address) {
+            addressLine = outlet.address;
+        }
+
+        let cityLine = city || LOCATION_PLACEHOLDER;
+        if (outletNameLower && cityLine.toLowerCase() === outletNameLower) {
+            cityLine = outlet?.city?.trim() || LOCATION_PLACEHOLDER;
+        }
+
+        addressLine = stripRedundantCityFromAddress(cityLine, addressLine);
+
+        return { locationCityLine: cityLine, locationAddressLine: addressLine };
+    }, [locationData, nearestOutlet]);
+
+    const hideStoreTitleRow = useMemo(() => {
+        if (locationCityLine === LOCATION_PLACEHOLDER) return false;
+        return storeName.trim().toLowerCase() === locationCityLine.trim().toLowerCase();
+    }, [storeName, locationCityLine]);
+
+    const showStoreSubtitle = useMemo(() => {
+        const a = storeMeta?.trim().toLowerCase();
+        const b = locationAddressLine?.trim().toLowerCase();
+        if (a && b && a === b) return false;
+        return true;
+    }, [storeMeta, locationAddressLine]);
 
     const menuViewportRef = useRef<HTMLDivElement>(null);
 
@@ -417,50 +495,44 @@ const Menu: React.FC = () => {
             <motion.div
                 ref={menuViewportRef}
                 animate={{
-                    scale: isCheckoutOpen ? 0.985 : 1,
+                    scale: 1,
                     transformOrigin: "top center",
-                    borderRadius: isCheckoutOpen ? "20px" : "0px",
-                    overflow: isCheckoutOpen ? "hidden" : "visible",
+                    borderRadius: "0px",
+                    overflow: "visible",
                 }}
                 transition={{ duration: 0.3 }}
                 className="flex min-h-0 flex-1 flex-col bg-white md:h-[100dvh] md:overflow-hidden"
             >
-                <div className="border-b border-[#E5E7EB] bg-white px-4 pb-5 pt-3 md:hidden">
-                    <button
-                        type="button"
-                        onClick={openLocationPicker}
-                        className="mb-4 flex w-full items-center gap-2 text-left text-[14px] text-[#374151]"
-                    >
-                        <MapPin className="h-4 w-4 flex-shrink-0 text-[#111827]" />
-                        <span className="truncate">{locationLabel}</span>
-                        <ChevronDown className="ml-auto h-4 w-4 flex-shrink-0" />
-                    </button>
-
-                    <div className="mb-4 flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                            <h1 className="truncate text-[28px] font-semibold leading-none text-[#111827]">{storeName}</h1>
-                            <p className="mt-1 truncate text-[14px] text-[#6B7280]">{storeMeta}</p>
-                        </div>
+                <div className="border-b border-[#E5E7EB] bg-white px-4 pb-4 pt-3 md:hidden">
+                    <div className="flex items-start gap-3">
                         <button
                             type="button"
-                            onClick={() => setOrderType((current) => current === "delivery" ? "pickup" : "delivery")}
-                            className="flex h-11 items-center gap-2 rounded-xl border border-[#E5E7EB] bg-white px-4 text-[15px] font-medium text-[#374151]"
+                            onClick={openLocationPicker}
+                            className="flex min-w-0 flex-1 items-start gap-2 rounded-xl py-0.5 text-left transition-colors active:bg-gray-50"
                         >
-                            <span>{orderType === "delivery" ? "Delivery" : "Pickup"}</span>
-                            <ChevronDown className="h-4 w-4" />
+                            <MapPin className="mt-1 h-4 w-4 flex-shrink-0 text-[#111827]" />
+                            <div className="min-w-0 flex-1">
+                                <div className="flex min-w-0 items-center gap-0.5">
+                                    <span className="truncate text-[15px] font-semibold leading-snug text-[#111827]">
+                                        {locationCityLine}
+                                    </span>
+                                    <ChevronDown className="h-4 w-4 flex-shrink-0 text-[#6B7280]" aria-hidden />
+                                </div>
+                                {locationAddressLine ? (
+                                    <p className="mt-0.5 line-clamp-2 text-[13px] leading-snug text-[#6B7280]">
+                                        {locationAddressLine}
+                                    </p>
+                                ) : null}
+                            </div>
                         </button>
-                    </div>
-
-                    <MenuSearch
-                        query={searchQuery}
-                        onQueryChange={setSearchQuery}
-                        vegOnly={vegOnly}
-                        onVegToggle={() => setVegOnly((v) => !v)}
-                        className="flex-col items-stretch"
-                    />
-
-                    <div className="mt-4 md:hidden">
-                        <PromoBanner />
+                        <button
+                            type="button"
+                            onClick={() => setIsAccountSheetOpen(true)}
+                            aria-label={user ? "Account" : "Log in"}
+                            className="mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-[#E5E7EB] bg-white text-[#111827] shadow-sm transition-transform active:scale-95"
+                        >
+                            <User className="h-5 w-5" strokeWidth={2} />
+                        </button>
                     </div>
                 </div>
 
@@ -473,54 +545,83 @@ const Menu: React.FC = () => {
                                 </div>
                             </div>
                             <div className="min-w-0">
-                                <h1 className="truncate text-[32px] font-semibold leading-none text-[#111827]">{storeName}</h1>
-                                <p className="mt-1 truncate text-[14px] text-[#6B7280]">{storeMeta}</p>
+                                {!hideStoreTitleRow ? (
+                                    <h1 className="truncate text-[32px] font-semibold leading-none text-[#111827]">{storeName}</h1>
+                                ) : null}
+                                {showStoreSubtitle ? (
+                                    <p
+                                        className={`truncate text-[14px] text-[#6B7280] ${hideStoreTitleRow ? "" : "mt-1"}`}
+                                    >
+                                        {storeMeta}
+                                    </p>
+                                ) : null}
                             </div>
                         </div>
 
-                        <div className="flex min-w-0 flex-[1.15] items-center justify-center gap-3">
-                            <div className="flex items-center gap-0 bg-[#F3F4F6] p-1 rounded-xl">
-                                <button
-                                    type="button"
-                                    onClick={() => setOrderType("delivery")}
-                                    className={`flex h-11 items-center gap-2 rounded-xl px-5 text-[14px] font-medium transition-colors ${
-                                        orderType === "delivery" ? "bg-white text-[#166534] shadow-sm" : "text-[#374151] hover:text-[#166534]"
-                                    }`}
-                                >
-                                    <Truck className="h-4 w-4" />
-                                    Delivery
-                                </button>
-                                <div className="w-px h-7 bg-[#E5E7EB]" />
-                                <button
-                                    type="button"
-                                    onClick={() => setOrderType("pickup")}
-                                    className={`flex h-11 items-center gap-2 rounded-xl px-5 text-[14px] font-medium transition-colors ${
-                                        orderType === "pickup" ? "bg-white text-[#166534] shadow-sm" : "text-[#374151] hover:text-[#166534]"
-                                    }`}
-                                >
-                                    <Store className="h-4 w-4" />
-                                    Pickup
-                                </button>
-                            </div>
+                        <div className="flex min-w-0 flex-[1.15] items-center justify-center">
                             <button
                                 type="button"
                                 onClick={openLocationPicker}
-                                className="flex min-w-0 items-center gap-2 rounded-xl border border-[#E5E7EB] px-5 py-3 text-[14px] text-[#374151]"
+                                className="flex min-w-0 max-w-full items-start gap-3 rounded-xl border border-[#E5E7EB] px-5 py-3 text-left text-[14px] text-[#374151]"
                             >
-                                <MapPin className="h-4 w-4 flex-shrink-0 text-[#111827]" />
-                                <span className="truncate">{locationLabel}</span>
-                                <ChevronDown className="h-4 w-4 flex-shrink-0" />
+                                <MapPin className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#111827]" />
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex min-w-0 items-center gap-0.5">
+                                        <span className="truncate font-semibold text-[#111827]">{locationCityLine}</span>
+                                        <ChevronDown className="h-4 w-4 flex-shrink-0 text-[#6B7280]" aria-hidden />
+                                    </div>
+                                    {locationAddressLine ? (
+                                        <p className="mt-0.5 line-clamp-2 text-[13px] leading-snug text-[#6B7280]">
+                                            {locationAddressLine}
+                                        </p>
+                                    ) : null}
+                                </div>
                             </button>
                         </div>
 
-                        <div className="flex min-w-0 flex-1 items-center justify-end">
+                        <div className="flex min-w-0 flex-1 flex-col items-stretch justify-center gap-2">
                             <MenuSearch
                                 query={searchQuery}
                                 onQueryChange={setSearchQuery}
                                 vegOnly={vegOnly}
                                 onVegToggle={() => setVegOnly((v) => !v)}
-                                className="w-full max-w-[520px]"
+                                hideVeg
+                                className="w-full max-w-[520px] self-end"
                             />
+                            <div className="flex w-full max-w-[520px] items-center justify-between gap-3 self-end">
+                                <div className="flex min-w-0 flex-1 items-center gap-0 rounded-xl bg-[#F3F4F6] p-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => setOrderType("delivery")}
+                                        className={`flex h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-3 text-[13px] font-medium transition-colors sm:h-11 sm:gap-2 sm:rounded-xl sm:px-5 sm:text-[14px] ${
+                                            orderType === "delivery"
+                                                ? "bg-white text-[#166534] shadow-sm"
+                                                : "text-[#374151] hover:text-[#166534]"
+                                        }`}
+                                    >
+                                        <Truck className="h-4 w-4 flex-shrink-0" />
+                                        <span className="truncate">Delivery</span>
+                                    </button>
+                                    <div className="h-6 w-px flex-shrink-0 bg-[#E5E7EB] sm:h-7" />
+                                    <button
+                                        type="button"
+                                        onClick={() => setOrderType("pickup")}
+                                        className={`flex h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-3 text-[13px] font-medium transition-colors sm:h-11 sm:gap-2 sm:rounded-xl sm:px-5 sm:text-[14px] ${
+                                            orderType === "pickup"
+                                                ? "bg-white text-[#166534] shadow-sm"
+                                                : "text-[#374151] hover:text-[#166534]"
+                                        }`}
+                                    >
+                                        <Store className="h-4 w-4 flex-shrink-0" />
+                                        <span className="truncate">Pickup</span>
+                                    </button>
+                                </div>
+                                <VegOnlyToggle
+                                    vegOnly={vegOnly}
+                                    onVegToggle={() => setVegOnly((v) => !v)}
+                                    className="flex-shrink-0"
+                                />
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -538,28 +639,74 @@ const Menu: React.FC = () => {
 
                     <div
                         ref={scrollContainerRef}
-                        className="flex-1 min-h-0 min-w-0 overflow-y-auto overscroll-contain bg-transparent px-4 pb-28 pt-6 md:px-8 md:pb-10 md:pt-4 xl:pr-10 menu-scrollbar-hide"
+                        className="flex-1 min-h-0 min-w-0 overflow-y-auto overscroll-contain bg-transparent px-4 pb-28 pt-0 md:px-8 md:pb-10 md:pt-4 xl:pr-10 menu-scrollbar-hide"
                     >
-                        {loading ? (
-                            <>
-                                <div className="hidden md:block">
-                                    <div className="h-[248px] rounded-[24px] bg-gray-100" />
+                        <div className="sticky top-0 z-20 -mx-4 border-b border-[#E5E7EB] bg-white px-4 pb-3 pt-3 shadow-[0_8px_16px_-8px_rgba(15,23,42,0.12)] md:hidden">
+                            <MenuSearch
+                                query={searchQuery}
+                                onQueryChange={setSearchQuery}
+                                vegOnly={vegOnly}
+                                onVegToggle={() => setVegOnly((v) => !v)}
+                                hideVeg
+                                className="w-full"
+                            />
+                            <div className="mt-2 flex items-center justify-between gap-2">
+                                <div className="flex min-w-0 flex-1 items-center gap-0 rounded-xl bg-[#F3F4F6] p-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => setOrderType("delivery")}
+                                        className={`flex h-10 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg px-2 text-[12px] font-semibold transition-colors ${
+                                            orderType === "delivery"
+                                                ? "bg-white text-[#166534] shadow-sm"
+                                                : "text-[#374151]"
+                                        }`}
+                                    >
+                                        <Truck className="h-3.5 w-3.5 flex-shrink-0" />
+                                        <span className="truncate">Delivery</span>
+                                    </button>
+                                    <div className="h-5 w-px flex-shrink-0 bg-[#E5E7EB]" />
+                                    <button
+                                        type="button"
+                                        onClick={() => setOrderType("pickup")}
+                                        className={`flex h-10 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg px-2 text-[12px] font-semibold transition-colors ${
+                                            orderType === "pickup"
+                                                ? "bg-white text-[#166534] shadow-sm"
+                                                : "text-[#374151]"
+                                        }`}
+                                    >
+                                        <Store className="h-3.5 w-3.5 flex-shrink-0" />
+                                        <span className="truncate">Pickup</span>
+                                    </button>
                                 </div>
-                                {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
-                            </>
-                        ) : error ? (
-                            <div className="flex flex-col items-center justify-center py-20 text-center">
-                                <div className="mb-4 h-12 w-12 rounded-full bg-[#F3F4F6]" />
-                                <p className="font-semibold text-gray-700">{error}</p>
+                                <VegOnlyToggle
+                                    vegOnly={vegOnly}
+                                    onVegToggle={() => setVegOnly((v) => !v)}
+                                    className="flex-shrink-0"
+                                />
                             </div>
-                        ) : (
-                            <>
-                                <div className="hidden md:block">
-                                    <PromoBanner />
-                                </div>
+                        </div>
 
-                                {displayedMenuGroups.map((group) => (
-                                    <section key={group.id} className="mt-8 first:mt-0 md:mt-10">
+                        <div className="mt-4 md:mt-0">
+                            {loading ? (
+                                <>
+                                    <div className="hidden md:block">
+                                        <div className="h-[248px] rounded-[24px] bg-gray-100" />
+                                    </div>
+                                    {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
+                                </>
+                            ) : error ? (
+                                <div className="flex flex-col items-center justify-center py-20 text-center">
+                                    <div className="mb-4 h-12 w-12 rounded-full bg-[#F3F4F6]" />
+                                    <p className="font-semibold text-gray-700">{error}</p>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="mb-4">
+                                        <PromoBanner />
+                                    </div>
+
+                                    {displayedMenuGroups.map((group) => (
+                                        <section key={group.id} className="mt-8 first:mt-0 md:mt-10">
                                         {group.name && (
                                             <div className="mb-4 border-b border-[#E5E7EB] pb-3 md:mb-6">
                                                 <h2 className="text-[22px] font-semibold text-[#111827] md:text-[30px]">
@@ -590,62 +737,45 @@ const Menu: React.FC = () => {
                                                 </section>
                                             );
                                         })}
-                                    </section>
-                                ))}
+                                        </section>
+                                    ))}
 
-                                {filteredProducts.length === 0 && (
-                                    <div className="flex flex-col items-center justify-center py-20 text-center">
-                                        <div className="mb-4 h-12 w-12 rounded-full bg-[#F3F4F6]" />
-                                        <p className="mb-1 font-semibold text-gray-700">No items found</p>
-                                        <p className="text-sm text-gray-400">Try a different search or remove filters</p>
-                                    </div>
-                                )}
+                                    {filteredProducts.length === 0 && (
+                                        <div className="flex flex-col items-center justify-center py-20 text-center">
+                                            <div className="mb-4 h-12 w-12 rounded-full bg-[#F3F4F6]" />
+                                            <p className="mb-1 font-semibold text-gray-700">No items found</p>
+                                            <p className="text-sm text-gray-400">Try a different search or remove filters</p>
+                                        </div>
+                                    )}
 
-                                <div className="h-8 xl:h-0" />
-                            </>
-                        )}
+                                    <div className="h-8 xl:h-0" />
+                                </>
+                            )}
+                        </div>
                     </div>
 
                     <CartPanel
                         orderType={orderType}
-                        onCheckoutClick={() => setIsCheckoutOpen(true)}
-                        isCheckoutOpen={isCheckoutOpen}
+                        onOrderTypeChange={setOrderType}
+                        checkoutLaunchKey={checkoutLaunchKey}
+                        hideMobileFloatingBar
+                        mobileCartDrawerOpen={mobileCartDrawerOpen}
+                        onMobileCartDrawerOpenChange={setMobileCartDrawerOpen}
                     />
                 </div>
             </motion.div>
 
-            {!isCheckoutOpen && (
+            {!mobileCartDrawerOpen && (
                 <div
-                    className="fixed bottom-6 left-1/2 z-40 flex h-14 -translate-x-1/2 overflow-hidden rounded-full border border-[#E5E7EB] bg-white shadow-[0_16px_40px_rgba(15,23,42,0.16)] lg:hidden"
+                    className="fixed z-[60] left-1/2 flex h-12 w-max max-w-[min(calc(100vw-2rem),17.5rem)] -translate-x-1/2 overflow-hidden rounded-full border border-[#E5E7EB] bg-white shadow-[0_12px_32px_rgba(15,23,42,0.12)] xl:hidden"
                     style={{ bottom: "calc(env(safe-area-inset-bottom) + 1rem)" }}
                 >
                     <button
                         type="button"
-                        onClick={() => openMobileNavigator("menus")}
-                        className="flex min-w-[132px] items-center gap-2 px-4 text-left text-[#111827]"
+                        onClick={openCategorySheet}
+                        className="flex min-w-0 max-w-[11rem] flex-1 items-center gap-2 pl-3 pr-2 text-left text-[#111827] transition-colors active:bg-gray-50"
                     >
-                        <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#F3F4F6] text-[11px] font-semibold text-[#6B7280]">
-                            {activeMenuGroup?.image_url ? (
-                                <img
-                                    src={activeMenuGroup.image_url}
-                                    alt={activeMenuLabel}
-                                    className="h-full w-full object-cover"
-                                    loading="lazy"
-                                    decoding="async"
-                                />
-                            ) : (
-                                <span>{activeMenuLabel.charAt(0).toUpperCase()}</span>
-                            )}
-                        </div>
-                        <p className="truncate text-[13px] font-semibold">{activeMenuLabel}</p>
-                    </button>
-                    <div className="my-3 w-px bg-[#E5E7EB]" />
-                    <button
-                        type="button"
-                        onClick={() => openMobileNavigator("categories")}
-                        className="flex min-w-[150px] items-center gap-2 px-4 text-left text-[#111827]"
-                    >
-                        <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#F3F4F6] text-[11px] font-semibold text-[#6B7280]">
+                        <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#F3F4F6] text-[10px] font-semibold text-[#6B7280]">
                             {activeCategory?.image_url ? (
                                 <img
                                     src={activeCategory.image_url}
@@ -658,7 +788,17 @@ const Menu: React.FC = () => {
                                 <span>{activeCategoryLabel.charAt(0).toUpperCase()}</span>
                             )}
                         </div>
-                        <p className="truncate text-[13px] font-semibold">{activeCategoryLabel}</p>
+                        <p className="min-w-0 flex-1 truncate text-[13px] font-semibold">{activeCategoryLabel}</p>
+                    </button>
+                    <div className="my-2.5 w-px shrink-0 bg-[#E5E7EB]" aria-hidden />
+                    <button
+                        type="button"
+                        onClick={() => setMobileCartDrawerOpen(true)}
+                        className="flex shrink-0 items-center gap-1.5 pl-2 pr-3 text-[#111827] transition-colors active:bg-gray-50"
+                        aria-label={`Open cart, ${totalItems} items`}
+                    >
+                        <ShoppingBag className="h-5 w-5 shrink-0 text-[#374151]" />
+                        <span className="text-[14px] font-bold tabular-nums">{totalItems}</span>
                     </button>
                 </div>
             )}
@@ -668,11 +808,11 @@ const Menu: React.FC = () => {
                     <button
                         type="button"
                         onClick={() => setIsCategoryDrawerOpen(false)}
-                        className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+                        className="fixed inset-0 z-40 bg-black/40 xl:hidden"
                     />
-                    <div className="fixed bottom-0 left-0 right-0 z-50 rounded-t-[28px] bg-white px-5 pb-6 pt-4 shadow-[0_-18px_48px_rgba(15,23,42,0.18)] lg:hidden">
+                    <div className="fixed bottom-0 left-0 right-0 z-50 rounded-t-[28px] bg-white px-5 pb-6 pt-4 shadow-[0_-18px_48px_rgba(15,23,42,0.18)] xl:hidden">
                         <div className="mb-4 flex items-center justify-between">
-                            <h2 className="text-[20px] font-semibold text-[#111827]">Browse</h2>
+                            <h2 className="text-[20px] font-semibold text-[#111827]">Categories</h2>
                             <button
                                 type="button"
                                 onClick={() => setIsCategoryDrawerOpen(false)}
@@ -681,193 +821,59 @@ const Menu: React.FC = () => {
                                 <X className="h-5 w-5" />
                             </button>
                         </div>
-                        <div className="mb-4 flex rounded-full bg-[#F3F4F6] p-1">
-                            <button
-                                type="button"
-                                onClick={() => setMobileNavigatorView("menus")}
-                                className={`flex-1 rounded-full px-4 py-2 text-[13px] font-semibold transition-colors ${
-                                    mobileNavigatorView === "menus"
-                                        ? "bg-white text-[#111827] shadow-sm"
-                                        : "text-[#6B7280]"
-                                }`}
-                            >
-                                Menus
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setMobileNavigatorView("categories")}
-                                className={`flex-1 rounded-full px-4 py-2 text-[13px] font-semibold transition-colors ${
-                                    mobileNavigatorView === "categories"
-                                        ? "bg-white text-[#111827] shadow-sm"
-                                        : "text-[#6B7280]"
-                                }`}
-                            >
-                                Categories
-                            </button>
-                        </div>
                         <div className="max-h-[58vh] overflow-y-auto">
-                            {mobileNavigatorView === "menus" ? (
-                                menuGroups.map((group) => (
-                                    <button
-                                        key={group.id}
-                                        type="button"
-                                        onClick={() => scrollToMenuGroup(group.id)}
-                                        className={`mb-2 flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-[15px] ${
-                                            activeMenuId === group.id ? "bg-[#F0FDF4] text-[#166534]" : "text-[#374151]"
-                                        }`}
-                                    >
-                                        <div className="flex min-w-0 items-center gap-3">
-                                            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#F3F4F6] text-[13px] font-semibold text-[#6B7280]">
-                                                {group.image_url ? (
-                                                    <img
-                                                        src={group.image_url}
-                                                        alt={group.name || "Menu"}
-                                                        className="h-full w-full object-cover"
-                                                        loading="lazy"
-                                                        decoding="async"
-                                                    />
-                                                ) : (
-                                                    <span>{(group.name || "Menu").charAt(0).toUpperCase()}</span>
-                                                )}
-                                            </div>
-                                            <span className="truncate font-medium">{group.name || "Menu"}</span>
-                                        </div>
-                                        <ChevronDown className={`h-4 w-4 -rotate-90 ${activeMenuId === group.id ? "opacity-100" : "opacity-0"}`} />
-                                    </button>
-                                ))
-                            ) : (
-                                menuGroups.map((group) => (
-                                    <div key={group.id} className="mb-5 last:mb-0">
-                                        {group.name && (
-                                            <p className="mb-2 px-1 text-[12px] font-semibold uppercase tracking-[0.18em] text-[#9CA3AF]">
-                                                {group.name}
-                                            </p>
-                                        )}
-                                        {group.categories.map((cat) => {
-                                            const isActive = activeCategoryId === cat.id;
-                                            return (
-                                                <button
-                                                    key={cat.id}
-                                                    type="button"
-                                                    onClick={() => scrollToCategory(cat.id)}
-                                                    className={`mb-2 flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-[15px] ${
-                                                        isActive ? "bg-[#F0FDF4] text-[#166534]" : "text-[#374151]"
-                                                    }`}
-                                                >
-                                                    <div className="flex min-w-0 items-center gap-3">
-                                                        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#F3F4F6] text-[13px] font-semibold text-[#6B7280]">
-                                                            {cat.image_url ? (
-                                                                <img
-                                                                    src={cat.image_url}
-                                                                    alt={cat.name}
-                                                                    className="h-full w-full object-cover"
-                                                                    loading="lazy"
-                                                                    decoding="async"
-                                                                />
-                                                            ) : (
-                                                                <span>{cat.name.charAt(0).toUpperCase()}</span>
-                                                            )}
-                                                        </div>
-                                                        <span className="truncate">{cat.name}</span>
+                            {menuGroups.map((group) => (
+                                <div key={group.id} className="mb-5 last:mb-0">
+                                    {group.name && (
+                                        <p className="mb-2 px-1 text-[12px] font-semibold uppercase tracking-[0.18em] text-[#9CA3AF]">
+                                            {group.name}
+                                        </p>
+                                    )}
+                                    {group.categories.map((cat) => {
+                                        const isActive = activeCategoryId === cat.id;
+                                        return (
+                                            <button
+                                                key={cat.id}
+                                                type="button"
+                                                onClick={() => scrollToCategory(cat.id)}
+                                                className={`mb-2 flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-[15px] ${
+                                                    isActive ? "bg-[#F0FDF4] text-[#166534]" : "text-[#374151]"
+                                                }`}
+                                            >
+                                                <div className="flex min-w-0 items-center gap-3">
+                                                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#F3F4F6] text-[13px] font-semibold text-[#6B7280]">
+                                                        {cat.image_url ? (
+                                                            <img
+                                                                src={cat.image_url}
+                                                                alt={cat.name}
+                                                                className="h-full w-full object-cover"
+                                                                loading="lazy"
+                                                                decoding="async"
+                                                            />
+                                                        ) : (
+                                                            <span>{cat.name.charAt(0).toUpperCase()}</span>
+                                                        )}
                                                     </div>
-                                                    <ChevronDown className={`h-4 w-4 -rotate-90 ${isActive ? "opacity-100" : "opacity-0"}`} />
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                ))
-                            )}
+                                                    <span className="truncate">{cat.name}</span>
+                                                </div>
+                                                <ChevronDown className={`h-4 w-4 -rotate-90 ${isActive ? "opacity-100" : "opacity-0"}`} />
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </>
             )}
 
-            {isLocationPickerOpen && (
-                <>
-                    <button
-                        type="button"
-                        aria-label="Close location picker"
-                        onClick={() => setIsLocationPickerOpen(false)}
-                        className="fixed inset-0 z-[120] bg-black/40 backdrop-blur-sm"
-                    />
-
-                    {/* Desktop: popup */}
-                    <div className="hidden md:block fixed inset-0 z-[130] pointer-events-none">
-                        <div className="absolute inset-0 pointer-events-auto flex items-center justify-center px-6">
-                            <div className="w-full max-w-[640px] rounded-[22px] bg-white shadow-[0_24px_60px_rgba(0,0,0,0.25)] border border-[#E5E7EB]">
-                                <div className="flex items-center justify-between px-6 py-5 border-b border-[#E5E7EB]">
-                                    <div>
-                                        <p className="text-[14px] font-bold text-[#111827]">Change address</p>
-                                        <p className="text-[12px] text-[#6B7280] mt-1">Search for city/locality or use GPS</p>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsLocationPickerOpen(false)}
-                                        className="rounded-full p-2 text-gray-500 hover:bg-gray-100 transition-colors"
-                                        aria-label="Close"
-                                    >
-                                        <X className="h-5 w-5" />
-                                    </button>
-                                </div>
-                                <div className="p-6">
-                                    <LocationSearch />
-                                    <button
-                                        type="button"
-                                        onClick={() => getCurrentLocation()}
-                                        className="mt-4 w-full h-[46px] rounded-xl bg-green-50 hover:bg-green-100 text-green-700 font-bold transition-colors flex items-center justify-center gap-2"
-                                    >
-                                        <MapPin className="h-4 w-4" />
-                                        Use my current GPS location
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Mobile: bottom sheet */}
-                    <div className="md:hidden fixed inset-x-0 bottom-0 z-[130] pointer-events-none">
-                        <div className="pointer-events-auto bg-white rounded-t-[28px] shadow-[0_-18px_48px_rgba(15,23,42,0.18)] border-t border-[#E5E7EB] max-h-[86vh] overflow-hidden flex flex-col"
-                            style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}
-                        >
-                            <div className="flex justify-center pt-3 pb-2 flex-shrink-0">
-                                <div className="w-12 h-1.5 rounded-full bg-gray-200" />
-                            </div>
-                            <div className="px-5 pb-3 flex-shrink-0">
-                                <div className="flex items-center justify-between">
-                                    <h2 className="text-[18px] font-semibold text-[#111827]">Change address</h2>
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsLocationPickerOpen(false)}
-                                        className="rounded-full p-2 text-gray-500 hover:bg-gray-100 transition-colors"
-                                        aria-label="Close"
-                                    >
-                                        <X className="h-5 w-5" />
-                                    </button>
-                                </div>
-                                <p className="text-[12px] text-[#6B7280] mt-1">Search for city/locality or use GPS</p>
-                            </div>
-                            <div className="flex-1 overflow-y-auto px-5 pb-2">
-                                <LocationSearch />
-                                <button
-                                    type="button"
-                                    onClick={() => getCurrentLocation()}
-                                    className="mt-4 w-full h-[46px] rounded-xl bg-green-50 hover:bg-green-100 text-green-700 font-bold transition-colors flex items-center justify-center gap-2"
-                                >
-                                    <MapPin className="h-4 w-4" />
-                                    Use my current GPS location
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </>
-            )}
-
-            <CheckoutDrawer
-                isOpen={isCheckoutOpen}
-                onClose={() => setIsCheckoutOpen(false)}
-                orderType={orderType}
-                onOrderTypeChange={setOrderType}
+            <ChangeLocationSheet
+                isOpen={isLocationPickerOpen}
+                onClose={() => setIsLocationPickerOpen(false)}
             />
+
+            <AccountSheet isOpen={isAccountSheetOpen} onClose={() => setIsAccountSheetOpen(false)} />
+
         </>
     );
 };

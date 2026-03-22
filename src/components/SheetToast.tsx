@@ -2,7 +2,7 @@ import React, { useCallback, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
 
-type SheetToastMessage = { type: "error" | "success"; text: string } | null;
+export type SheetToastMessage = { type: "error" | "success"; text: string } | null;
 
 export function useSheetToast() {
     const [toastMsg, setToastMsg] = useState<SheetToastMessage>(null);

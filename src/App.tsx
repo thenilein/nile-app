@@ -1,23 +1,22 @@
-import React, { useEffect, useState } from "react";
+import React, { lazy, Suspense, useEffect, useState } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { MotionConfig } from "framer-motion";
 import Navbar from "./components/Navbar.tsx";
-import Landing from "./pages/Landing.tsx";
-import Menu from "./pages/Menu.tsx";
-import OrderSuccess from "./pages/OrderSuccess.tsx";
 
-// Admin pages
-import AdminLogin from "./pages/admin/AdminLogin.tsx";
-import AdminLayout from "./components/admin/AdminLayout.tsx";
-import AdminDashboard from "./pages/admin/AdminDashboard.tsx";
-import AdminMenu from "./pages/admin/AdminMenu.tsx";
-import AdminCategories from "./pages/admin/AdminCategories.tsx";
-import AdminOrders from "./pages/admin/AdminOrders.tsx";
-import AdminUsers from "./pages/admin/AdminUsers.tsx";
-import AdminPromotions from "./pages/admin/AdminPromotions.tsx";
-import AdminAnalytics from "./pages/admin/AdminAnalytics.tsx";
-import AdminSettings from "./pages/admin/AdminSettings.tsx";
-import AdminLogs from "./pages/admin/AdminLogs.tsx";
+const Landing = lazy(() => import("./pages/Landing.tsx"));
+const Menu = lazy(() => import("./pages/Menu.tsx"));
+const OrderSuccess = lazy(() => import("./pages/OrderSuccess.tsx"));
+const AdminLogin = lazy(() => import("./pages/admin/AdminLogin.tsx"));
+const AdminLayout = lazy(() => import("./components/admin/AdminLayout.tsx"));
+const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard.tsx"));
+const AdminMenu = lazy(() => import("./pages/admin/AdminMenu.tsx"));
+const AdminCategories = lazy(() => import("./pages/admin/AdminCategories.tsx"));
+const AdminOrders = lazy(() => import("./pages/admin/AdminOrders.tsx"));
+const AdminUsers = lazy(() => import("./pages/admin/AdminUsers.tsx"));
+const AdminPromotions = lazy(() => import("./pages/admin/AdminPromotions.tsx"));
+const AdminAnalytics = lazy(() => import("./pages/admin/AdminAnalytics.tsx"));
+const AdminSettings = lazy(() => import("./pages/admin/AdminSettings.tsx"));
+const AdminLogs = lazy(() => import("./pages/admin/AdminLogs.tsx"));
 
 // Context
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -58,11 +57,23 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
 
 const AppRoutes = () => {
     const location = useLocation();
-    const showNavbar = !location.pathname.startsWith('/admin') && location.pathname !== "/menu";
+    const showNavbar =
+        !location.pathname.startsWith("/admin") && location.pathname !== "/menu" && location.pathname !== "/";
 
     return (
-        <div className="min-h-screen bg-white font-sans flex flex-col items-stretch">
+        <div
+            className={`min-h-screen font-sans flex flex-col items-stretch ${
+                location.pathname === "/" ? "bg-[#fbfbfd]" : "bg-white"
+            }`}
+        >
             {showNavbar && <Navbar />}
+            <Suspense
+                fallback={
+                    <div className="flex flex-1 items-center justify-center py-24 text-sm text-gray-500">
+                        Loading…
+                    </div>
+                }
+            >
             <Routes>
                 {/* Customer routes */}
                 <Route path="/" element={<Landing />} />
@@ -97,6 +108,7 @@ const AppRoutes = () => {
                     <Route path="logs" element={<AdminLogs />} />
                 </Route>
             </Routes>
+            </Suspense>
         </div>
     );
 };

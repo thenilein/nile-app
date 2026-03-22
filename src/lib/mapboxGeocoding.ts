@@ -5,7 +5,7 @@
  * Requires VITE_MAPBOX_ACCESS_TOKEN (or VITE_MAPBOX_TOKEN) in .env.
  */
 
-interface GeocodeSuggestion {
+export interface GeocodeSuggestion {
     id: string;
     displayName: string;
     city: string;
@@ -251,7 +251,7 @@ export async function mapboxReverseGeocode(lat: number, lon: number): Promise<Ge
 }
 
 /** Shape expected by checkout flow location list + handleSelectLocation. */
-async function mapboxCheckoutLocationResults(
+export async function mapboxCheckoutLocationResults(
     query: string
 ): Promise<Array<{ place_id: string; display_name: string; lat: string; lon: string }>> {
     const suggestions = await mapboxForwardGeocode(query, 4);

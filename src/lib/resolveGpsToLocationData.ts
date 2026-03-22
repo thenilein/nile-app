@@ -3,7 +3,7 @@ import { mapboxReverseGeocode } from "./mapboxGeocoding.ts";
 import { findMatchingSavedAddress } from "./addressCoordMatch.ts";
 
 /** Same shape as `LocationData` in context (kept here to avoid circular imports). */
-type ResolvedGpsLocation = {
+export type ResolvedGpsLocation = {
     latitude: number;
     longitude: number;
     city: string;

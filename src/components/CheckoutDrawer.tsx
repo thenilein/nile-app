@@ -1,48 +1,46 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, MapPin, Truck, Store, Banknote, CreditCard, Wallet, Smartphone, ShieldCheck, Check, Search, Navigation, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, Truck, Store, Banknote, CreditCard, Wallet, Smartphone, ShieldCheck, Navigation, CheckCircle2, ChevronLeft, Loader2, MapPin } from 'lucide-react';
+import { CouponSection } from './CouponSection';
 import { useNavigate } from 'react-router-dom';
 import confetti from 'canvas-confetti';
 import { supabase } from '../lib/supabase';
-import ProfileCompletionForm from './ProfileCompletionForm';
-import {
-    completeProfile as completeProfileCore,
-    sendOtp as sendOtpCore,
-    verifyOtp as verifyOtpCore,
-    resendOtp as resendOtpCore
-} from '../lib/msg91Otp';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { useLocation } from '../context/LocationContext';
+import { DEFAULT_CHECKOUT_MAP_CENTER } from '../lib/checkoutMapConstants.ts';
 
-<<<<<<< Updated upstream
-const OTP_LENGTH = 6;
-const RESEND_COOLDOWN = 30;
-
-interface CheckoutDrawerProps {
-    isOpen: boolean;
-    onClose: () => void;
-=======
 const CheckoutDeliveryMap = lazy(() =>
     import('./CheckoutDeliveryMap.tsx').then((m) => ({ default: m.CheckoutDeliveryMap })),
 );
 import { mapboxReverseGeocode, mergeFormattedAddress } from '../lib/mapboxGeocoding.ts';
 import { findMatchingSavedAddress } from '../lib/addressCoordMatch.ts';
 import { resolveGpsCoordsToLocationData } from '../lib/resolveGpsToLocationData.ts';
-import {
-    fetchUserSavedAddresses,
-    isSavedAddressType,
-    savedAddressToLocation,
-    savedAddressTypeLabel,
-    type SavedAddressRow,
-} from '../lib/savedAddresses.ts';
-import { computeOrderPricing } from '../lib/pricing.ts';
 import { SheetLoginStep } from './SheetLoginStep.tsx';
 import { SheetToast, useSheetToast } from './SheetToast.tsx';
 import { sheetCapsuleIconBtn } from '../lib/sheetCapsuleStyles.ts';
-import { sheetHorizontalSlideVariants, sheetTitleSlideVariants } from '../lib/sheetMotion.ts';
 
 type AddressType = 'home' | 'work' | 'other';
+
+type SavedAddressRow = {
+    id: string;
+    formatted_address: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    street: string | null;
+    locality: string | null;
+    city: string | null;
+    state: string | null;
+    recipient_name: string | null;
+    phone: string | null;
+    address_type: string | null;
+};
+
+const ADDRESS_TYPE_LABELS: Record<AddressType, string> = {
+    home: 'Home',
+    work: 'Work',
+    other: 'Other',
+};
 
 function normalizeIndiaPhone(raw: string): string {
     return raw.replace(/\D/g, '').slice(-10);
@@ -52,119 +50,87 @@ function isValidIndiaMobile(digits: string): boolean {
     return /^[6-9]\d{9}$/.test(digits);
 }
 
-interface CheckoutFlowContentProps {
+export interface CheckoutFlowContentProps {
     visible: boolean;
->>>>>>> Stashed changes
     orderType?: DeliveryType;
     onOrderTypeChange?: (t: DeliveryType) => void;
+    /** Return to cart list inside the same sheet */
+    onBackToCart: () => void;
+    /** Close cart drawer / panel */
+    onDismiss: () => void;
 }
 
 type DeliveryType = 'delivery' | 'pickup';
 type PaymentMethod = 'cash' | 'upi' | 'card' | 'wallet';
-type OtpStep = 'idle' | 'sent' | 'profile' | 'verified';
 
-<<<<<<< Updated upstream
+/** 0 sign-in → 1 address → 2 payment → 3 confirmation */
+type CheckoutStep = 0 | 1 | 2 | 3;
+
 const FREE_DELIVERY_THRESHOLD = 300;
 const DELIVERY_FEE = 30;
 
-// ── Toast ──────────────────────────────────────────────────────────────────────
-const Toast: React.FC<{ msg: { type: 'error' | 'success'; text: string } | null }> = ({ msg }) => (
-    <AnimatePresence>
-        {msg && (
-            <motion.div
-                initial={{ opacity: 0, y: -20, scale: 0.9 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                className={`fixed top-6 left-1/2 -translate-x-1/2 z-[200] px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 max-w-[90vw] ${msg.type === 'error' ? 'bg-red-500 text-white' : 'bg-green-600 text-white'}`}
-            >
-                {msg.type === 'error' ? <AlertCircle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
-                <span className="text-sm font-semibold">{msg.text}</span>
-            </motion.div>
-        )}
-    </AnimatePresence>
-);
-
-const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose, orderType, onOrderTypeChange }) => {
-=======
-function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCart, onDismiss }: CheckoutFlowContentProps) {
->>>>>>> Stashed changes
+export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCart, onDismiss }: CheckoutFlowContentProps) {
     const { totalItems, totalPrice, items, clearCart } = useCart();
-    const { user } = useAuth();
-    const { locationData, nearestOutlet, setLocationData, getCurrentLocation } = useLocation();
+    const { user, isLoading: authLoading } = useAuth();
+    const { locationData, nearestOutlet, setLocationData } = useLocation();
     const navigate = useNavigate();
 
-    // Steps: 1 = Delivery, 2 = Payment, 3 = Confirmation
-    const [step, setStep] = useState<1 | 2 | 3>(1);
+    const [step, setStep] = useState<CheckoutStep>(1);
+    /** 1 = forward (next), -1 = back — drives slide direction for step panels + title */
+    const [slideDir, setSlideDir] = useState(1);
+    const checkoutBootstrapped = useRef(false);
+
+    const transitionTo = useCallback((next: CheckoutStep, dir: number) => {
+        setSlideDir(dir);
+        setStep(next);
+    }, []);
     const [deliveryType, setDeliveryType] = useState<DeliveryType>(orderType ?? 'delivery');
 
     useEffect(() => {
-        if (!isOpen) return;
+        if (!visible) return;
         if (!orderType) return;
         setDeliveryType(orderType);
-    }, [isOpen, orderType]);
+    }, [visible, orderType]);
 
-    // ── Phone + OTP state ──────────────────────────────────────────────
-    const [phone, setPhone] = useState('');
-    const [fullName, setFullName] = useState('');
-    const [phoneError, setPhoneError] = useState('');
-    const [otpStep, setOtpStep] = useState<OtpStep>('idle');
-    const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
-    const [otpLoading, setOtpLoading] = useState(false);
-    const [otpShake, setOtpShake] = useState(false);
-    const [resendCooldown, setResendCooldown] = useState(0);
-    const [sendingOtp, setSendingOtp] = useState(false);
-    const [profileLoading, setProfileLoading] = useState(false);
-    const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
-
-    // ── Rest of form state ─────────────────────────────────────────────
+    const [recipientName, setRecipientName] = useState('');
+    const [deliveryPhone, setDeliveryPhone] = useState('');
+    const [addressType, setAddressType] = useState<AddressType>('home');
+    const [streetName, setStreetName] = useState('');
     const [houseNo, setHouseNo] = useState('');
     const [instructions, setInstructions] = useState('');
     const [step1Error, setStep1Error] = useState('');
 
-    // Payment State
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
     const [upiId, setUpiId] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
-
-    // Success State
     const [orderId, setOrderId] = useState<string | null>(null);
+    const [couponCode, setCouponCode] = useState<string | null>(null);
+    const [couponDiscount, setCouponDiscount] = useState(0);
 
-    // Inline Location State
-    const [isChangingLocation, setIsChangingLocation] = useState(false);
-    const [locSearchQuery, setLocSearchQuery] = useState('');
-    const [locResults, setLocResults] = useState<any[]>([]);
-    const [isSearchingLoc, setIsSearchingLoc] = useState(false);
+    const [mapBootstrap, setMapBootstrap] = useState<{ lat: number; lng: number } | null>(null);
+    const [flyToTarget, setFlyToTarget] = useState<{ lat: number; lng: number } | null>(null);
+    const [savedAddresses, setSavedAddresses] = useState<SavedAddressRow[]>([]);
+    const [loadingSavedAddresses, setLoadingSavedAddresses] = useState(false);
+    const [savingAddress, setSavingAddress] = useState(false);
+    const [checkoutGpsLoading, setCheckoutGpsLoading] = useState(false);
+    /** When pin matches a saved address, start collapsed (no map/inputs) until user taps Change address. */
+    const [deliveryFormExpanded, setDeliveryFormExpanded] = useState(false);
 
-    // Toast
-    const [toastMsg, setToastMsg] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
+    const { toastMsg, showToast } = useSheetToast();
 
-    const showToast = useCallback((type: 'error' | 'success', text: string) => {
-        setToastMsg({ type, text });
-        setTimeout(() => setToastMsg(null), 3000);
-    }, []);
-
-    // ── Determine if phone is pre-verified (user already logged in) ────
-    const userPhone = user?.user_metadata?.phone || '';
-
-    // On open: pre-fill + mark verified if user is logged in
-    useEffect(() => {
-        if (isOpen) {
-            if (userPhone) {
-                setPhone(userPhone);
-                setOtpStep('verified');
-            } else {
-                setPhone('');
-                setOtpStep('idle');
-                setOtpDigits(['', '', '', '', '', '']);
-            }
+    useLayoutEffect(() => {
+        if (!visible) {
+            checkoutBootstrapped.current = false;
+            return;
         }
-    }, [isOpen, userPhone]);
+        if (authLoading) return;
+        if (!checkoutBootstrapped.current) {
+            checkoutBootstrapped.current = true;
+            transitionTo(user?.id ? 1 : 0, 1);
+        }
+    }, [visible, authLoading, user?.id, transitionTo]);
 
-    // Reset on close
     useEffect(() => {
-<<<<<<< Updated upstream
-        if (!isOpen) {
-=======
         if (!visible || !user?.id || step !== 0) return;
         transitionTo(1, 1);
     }, [visible, user?.id, step, transitionTo]);
@@ -202,8 +168,15 @@ function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCa
         let cancelled = false;
         (async () => {
             setLoadingSavedAddresses(true);
-            const data = await fetchUserSavedAddresses(user.id);
-            if (!cancelled) setSavedAddresses(data);
+            const { data, error } = await supabase
+                .from("addresses")
+                .select(
+                    "id, formatted_address, latitude, longitude, street, locality, city, state, recipient_name, phone, address_type"
+                )
+                .or(`user_id.eq.${user.id},profile_id.eq.${user.id}`)
+                .order("created_at", { ascending: false })
+                .limit(12);
+            if (!cancelled && !error && data) setSavedAddresses(data as SavedAddressRow[]);
             if (!cancelled) setLoadingSavedAddresses(false);
         })();
         return () => {
@@ -223,38 +196,45 @@ function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCa
     // Reset when checkout sheet hides
     useEffect(() => {
         if (!visible) {
->>>>>>> Stashed changes
             setTimeout(() => {
-                setStep(1);
+                setSlideDir(1);
+                setStep(0);
                 setPaymentMethod(null);
                 setOrderId(null);
                 setDeliveryType(orderType ?? 'delivery');
                 setIsSubmitting(false);
-                setIsChangingLocation(false);
-                setLocSearchQuery('');
-                setLocResults([]);
+                setRecipientName('');
+                setDeliveryPhone('');
+                setAddressType('home');
+                setStreetName('');
                 setHouseNo('');
                 setInstructions('');
                 setStep1Error('');
-                setOtpDigits(['', '', '', '', '', '']);
-                setResendCooldown(0);
-                setPhoneError('');
-                setFullName('');
+                setCouponCode(null);
+                setCouponDiscount(0);
+                setMapBootstrap(null);
+                setFlyToTarget(null);
+                setSavedAddresses([]);
+                setCheckoutGpsLoading(false);
+                setDeliveryFormExpanded(false);
             }, 300);
         }
-    }, [isOpen]);
+    }, [visible, orderType]);
 
-<<<<<<< Updated upstream
-    // Resend countdown
-=======
     const applySavedAddress = useCallback((row: SavedAddressRow) => {
-        const location = savedAddressToLocation(row);
-        if (!location) return;
-        const { latitude: lat, longitude: lng } = location;
-        setLocationData(location);
+        if (row.latitude == null || row.longitude == null) return;
+        const lat = row.latitude;
+        const lng = row.longitude;
+        setLocationData({
+            latitude: lat,
+            longitude: lng,
+            city: row.city || "",
+            state: row.state || "",
+            displayName: row.formatted_address || `${row.street || ""}, ${row.city || ""}`.replace(/^,\s*|,\s*$/g, "").trim() || "Saved address",
+        });
         if (row.recipient_name) setRecipientName(row.recipient_name);
         if (row.phone) setDeliveryPhone(normalizeIndiaPhone(row.phone));
-        if (isSavedAddressType(row.address_type)) {
+        if (row.address_type === 'home' || row.address_type === 'work' || row.address_type === 'other') {
             setAddressType(row.address_type);
         }
         if (row.street) setStreetName(row.street);
@@ -263,35 +243,48 @@ function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCa
     }, [setLocationData]);
 
     // Keep order fields in sync when using compact saved-address checkout
->>>>>>> Stashed changes
     useEffect(() => {
-        if (resendCooldown <= 0) return;
-        const t = setInterval(() => setResendCooldown(c => (c <= 1 ? 0 : c - 1)), 1000);
-        return () => clearInterval(t);
-    }, [resendCooldown]);
+        if (!visible || step !== 1 || deliveryType !== 'delivery') return;
+        if (!deliveryCompactSaved || !matchingSavedForPin) return;
+        applySavedAddress(matchingSavedForPin);
+    }, [visible, step, deliveryType, deliveryCompactSaved, matchingSavedForPin, applySavedAddress]);
 
-    // Nominatim autocomplete
-    useEffect(() => {
-        if (!locSearchQuery || locSearchQuery.length < 3) { setLocResults([]); return; }
-        const delay = setTimeout(async () => {
-            setIsSearchingLoc(true);
-            try {
-                const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locSearchQuery)}&format=json&countrycodes=in&limit=4`);
-                if (res.ok) setLocResults(await res.json());
-            } catch (e) { console.error(e); }
-            finally { setIsSearchingLoc(false); }
-        }, 500);
-        return () => clearTimeout(delay);
-    }, [locSearchQuery]);
+    const handleMapPositionChange = useCallback(
+        (lat: number, lng: number) => {
+            setLocationData({
+                latitude: lat,
+                longitude: lng,
+                city: "",
+                state: "",
+                displayName: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+            });
+        },
+        [setLocationData]
+    );
 
-    const handleSelectLocation = (result: any) => {
-        setLocationData({ latitude: parseFloat(result.lat), longitude: parseFloat(result.lon), city: '', state: '', displayName: result.display_name });
-        setIsChangingLocation(false); setLocSearchQuery(''); setLocResults([]);
+    const handleUseMyLocation = () => {
+        if (!navigator.geolocation) {
+            showToast("error", "Geolocation is not supported in this browser");
+            return;
+        }
+        setCheckoutGpsLoading(true);
+        navigator.geolocation.getCurrentPosition(
+            async ({ coords }) => {
+                const lat = coords.latitude;
+                const lng = coords.longitude;
+                const data = await resolveGpsCoordsToLocationData(lat, lng, user?.id);
+                setLocationData(data);
+                setFlyToTarget({ lat, lng });
+                setCheckoutGpsLoading(false);
+            },
+            () => {
+                setCheckoutGpsLoading(false);
+                showToast("error", "Could not get your location. Allow access or set the pin on the map.");
+            },
+            { timeout: 12000, enableHighAccuracy: true }
+        );
     };
 
-<<<<<<< Updated upstream
-    // Confetti on step 3
-=======
     const saveAddressToAccount = async () => {
         if (!user?.id) {
             showToast("error", "Sign in to save addresses");
@@ -360,7 +353,15 @@ function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCa
                 displayName: formattedAddress,
             });
             showToast("success", "Address saved");
-            setSavedAddresses(await fetchUserSavedAddresses(user.id));
+            const { data } = await supabase
+                .from("addresses")
+                .select(
+                    "id, formatted_address, latitude, longitude, street, locality, city, state, recipient_name, phone, address_type"
+                )
+                .or(`user_id.eq.${user.id},profile_id.eq.${user.id}`)
+                .order("created_at", { ascending: false })
+                .limit(12);
+            if (data) setSavedAddresses(data as SavedAddressRow[]);
         } catch {
             showToast("error", "Could not save address");
         } finally {
@@ -369,7 +370,6 @@ function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCa
     };
 
     // Confetti on confirmation
->>>>>>> Stashed changes
     useEffect(() => {
         if (step === 3) {
             const end = Date.now() + 1500;
@@ -382,146 +382,66 @@ function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCa
         }
     }, [step]);
 
-    // ── Phone validation ───────────────────────────────────────────────
-    const isPhoneValid = /^[6-9]\d{9}$/.test(phone);
-
-    const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const v = e.target.value.replace(/\D/g, '').slice(0, 10);
-        setPhone(v);
-        setPhoneError('');
+    const handleApplyCoupon = (code: string, discount: number) => {
+        if (!code) {
+            setCouponCode(null);
+            setCouponDiscount(0);
+        } else {
+            setCouponCode(code);
+            setCouponDiscount(discount);
+        }
     };
 
-    // ── OTP flow (shared service) ─────────────────────────────────────
-    const handleSendOtp = async () => {
-        if (!isPhoneValid) {
-            setPhoneError('Enter a valid 10-digit mobile number starting with 6-9');
+    // ── Continue to payment step ────────────────────────────────────────
+    const handleContinueToPayment = () => {
+        if (!user?.id) {
+            showToast('error', 'Sign in to continue');
+            transitionTo(0, -1);
             return;
         }
-        setSendingOtp(true);
-        try {
-            const ok = await sendOtpCore({ phone, showToast });
-            if (!ok) return;
-            setOtpStep('sent');
-            setResendCooldown(RESEND_COOLDOWN);
-            setOtpDigits(['', '', '', '', '', '']);
-            showToast('success', `OTP sent to +91 ${phone.slice(0, 2)}XXXXX${phone.slice(7)}`);
-            setTimeout(() => otpRefs.current[0]?.focus(), 200);
-        } finally {
-            setSendingOtp(false);
-        }
-    };
-
-    const handleResendOtp = async () => {
-        if (resendCooldown > 0) return;
-        const ok = await resendOtpCore({ phone, showToast });
-        if (!ok) return;
-        setOtpDigits(['', '', '', '', '', '']);
-        setResendCooldown(RESEND_COOLDOWN);
-        otpRefs.current[0]?.focus();
-    };
-
-    // ── OTP box interactions ───────────────────────────────────────────
-    const triggerShake = () => {
-        setOtpShake(true);
-        setTimeout(() => {
-            setOtpShake(false);
-            setOtpDigits(['', '', '', '', '', '']);
-            otpRefs.current[0]?.focus();
-        }, 500);
-    };
-
-    const submitOtp = async (digits: string[]) => {
-        const otp = digits.join('');
-        if (otp.length !== OTP_LENGTH) return;
-        setOtpLoading(true);
-        try {
-            const ok = await verifyOtpCore(phone, otp, showToast, {
-                onVerified: () => {
-                    setOtpStep('verified');
-                    showToast('success', 'Phone verified! ✅');
-                },
-                onNeedsProfile: () => {
-                    setOtpStep('profile');
-                    showToast('success', 'Phone verified. Add your name to continue.');
-                }
-            });
-            if (!ok) {
-                triggerShake();
+        if (deliveryType === "delivery") {
+            if (!locationData?.latitude || !locationData?.longitude) {
+                setStep1Error("Set your delivery location on the map.");
+                return;
             }
-        } finally {
-            setOtpLoading(false);
+            if (!recipientName.trim()) {
+                setStep1Error("Enter the recipient name.");
+                return;
+            }
+            const phoneDigits = normalizeIndiaPhone(deliveryPhone);
+            if (!isValidIndiaMobile(phoneDigits)) {
+                setStep1Error("Enter a valid 10-digit mobile number.");
+                return;
+            }
+            if (!streetName.trim()) {
+                setStep1Error("Enter street / road name.");
+                return;
+            }
         }
-    };
-
-    const handleOtpChange = (index: number, value: string) => {
-        if (!/^\d*$/.test(value)) return;
-        const newDigits = [...otpDigits];
-        newDigits[index] = value.slice(-1);
-        setOtpDigits(newDigits);
-        if (value && index < OTP_LENGTH - 1) otpRefs.current[index + 1]?.focus();
-        if (newDigits.every(d => d !== '') && newDigits.join('').length === OTP_LENGTH) {
-            void submitOtp(newDigits);
-        }
-    };
-
-    const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
-            otpRefs.current[index - 1]?.focus();
-            const n = [...otpDigits]; n[index - 1] = ''; setOtpDigits(n);
-        }
-    };
-
-    const handleOtpPaste = (e: React.ClipboardEvent) => {
-        e.preventDefault();
-        const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, OTP_LENGTH);
-        const newDigits = [...otpDigits];
-        pasted.split('').forEach((c, i) => { newDigits[i] = c; });
-        setOtpDigits(newDigits);
-        const nextIdx = Math.min(pasted.length, OTP_LENGTH - 1);
-        otpRefs.current[nextIdx]?.focus();
-        if (pasted.length === OTP_LENGTH) void submitOtp(newDigits);
-    };
-
-    const handleCompleteProfile = async () => {
-        setProfileLoading(true);
-        try {
-            const ok = await completeProfileCore({
-                phone,
-                fullName,
-                showToast,
-            });
-
-            if (!ok) return;
-
-            setOtpStep('verified');
-            showToast('success', 'Profile completed successfully!');
-        } finally {
-            setProfileLoading(false);
-        }
-    };
-
-    // ── Continue to Step 2 ─────────────────────────────────────────────
-    const handleContinueToStep2 = () => {
-        if (otpStep !== 'verified') {
-            setStep1Error('Please verify your phone number first.');
-            return;
-        }
-        if (deliveryType === 'delivery' && !houseNo.trim()) {
-            setStep1Error('Please enter your Flat / House / Apartment No.');
-            return;
-        }
-        setStep1Error('');
-        setStep(2);
+        setStep1Error("");
+        transitionTo(2, 1);
     };
 
     // ── Order placement ────────────────────────────────────────────────
     const handlePlaceOrder = async () => {
+        if (!user?.id) {
+            showToast('error', 'Sign in to place your order');
+            transitionTo(0, -1);
+            return;
+        }
         if (!paymentMethod) return;
         if (paymentMethod === 'upi' && !upiId.trim()) { alert('Please enter UPI ID'); return; }
         setIsSubmitting(true);
         try {
-            const userId = user?.id || null;
-            const deliveryLocation = deliveryType === 'delivery' ? (locationData?.displayName || 'Unknown') : (nearestOutlet?.name || 'Pickup In-Store');
+            const userId = user.id;
+            const profilePhone =
+                (user?.user_metadata?.phone as string | undefined) ||
+                (user?.phone as string | undefined) ||
+                null;
+            const orderPhone =
+                deliveryType === "delivery"
+                    ? normalizeIndiaPhone(deliveryPhone) || profilePhone
+                    : profilePhone;
             const { data: orderData, error: orderError } = await supabase.from('orders').insert([{
                 profile_id: userId,
                 total_amount: grandTotal,
@@ -529,12 +449,17 @@ function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCa
                 order_type: deliveryType,
                 notes: instructions || null,
                 payment_method: paymentMethod,
-                phone: phone || null,
+                phone: orderPhone,
                 delivery_address: deliveryType === 'delivery' ? {
-                    house_no: houseNo,
-                    area: locationData?.city || locationData?.displayName || '',
+                    recipient_name: recipientName.trim(),
+                    phone: normalizeIndiaPhone(deliveryPhone),
+                    address_type: addressType,
+                    street: streetName.trim(),
+                    house_no: houseNo.trim() || null,
+                    map_reference: locationData?.displayName || '',
+                    area: locationData?.city || '',
                     city: locationData?.state || '',
-                    full_address: `${houseNo}, ${locationData?.displayName || ''}`
+                    full_address: [houseNo.trim(), streetName.trim(), locationData?.displayName || ''].filter(Boolean).join(', '),
                 } : null
             }]).select().single();
             if (orderError) throw orderError;
@@ -544,7 +469,7 @@ function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCa
             if (itemsError) throw itemsError;
             setOrderId(newOrderId);
             clearCart();
-            setStep(3);
+            transitionTo(3, 1);
         } catch (error) {
             console.error('Order submission failed:', error);
             alert('Order failed, try again');
@@ -553,16 +478,46 @@ function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCa
         }
     };
 
-<<<<<<< Updated upstream
     const gst = Math.round(totalPrice * 0.05);
     const delFee = deliveryType === 'delivery' ? (totalPrice >= FREE_DELIVERY_THRESHOLD ? 0 : DELIVERY_FEE) : 0;
-    const grandTotal = Math.round(totalPrice) + gst + delFee;
+    const discountAmt = Math.round(couponCode ? couponDiscount : 0);
+    const grandTotal = Math.round(totalPrice) + gst + delFee - discountAmt;
 
-    const slideVariants = { enter: { x: '100%', opacity: 0 }, center: { x: 0, opacity: 1 }, exit: { x: '-100%', opacity: 0 } };
-    const shakeAnim = { x: [0, -8, 8, -8, 8, 0], transition: { duration: 0.4 } };
-=======
-    const pricing = computeOrderPricing(totalPrice, deliveryType, couponDiscount, Boolean(couponCode));
-    const { subtotal, gst, deliveryFee: delFee, discountAmt, grandTotal } = pricing;
+    const easeSmooth = [0.22, 1, 0.36, 1] as const;
+
+    const slideVariants = {
+        enter: (dir: number) => ({
+            x: dir > 0 ? '100%' : '-100%',
+            opacity: 0,
+        }),
+        center: {
+            x: 0,
+            opacity: 1,
+            transition: { duration: 0.38, ease: easeSmooth },
+        },
+        exit: (dir: number) => ({
+            x: dir > 0 ? '-100%' : '100%',
+            opacity: 0,
+            transition: { duration: 0.3, ease: easeSmooth },
+        }),
+    };
+
+    const titleVariants = {
+        initial: (dir: number) => ({
+            opacity: 0,
+            y: dir > 0 ? 10 : -8,
+        }),
+        animate: {
+            opacity: 1,
+            y: 0,
+            transition: { duration: 0.32, ease: easeSmooth },
+        },
+        exit: (dir: number) => ({
+            opacity: 0,
+            y: dir > 0 ? -8 : 8,
+            transition: { duration: 0.22, ease: easeSmooth },
+        }),
+    };
 
     const handleHeaderBack = useCallback(() => {
         if (step === 2) {
@@ -575,22 +530,11 @@ function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCa
     }, [step, transitionTo, onBackToCart]);
 
     if (!visible) return null;
->>>>>>> Stashed changes
 
     return (
-        <AnimatePresence>
-            {isOpen && (
-                <>
-                    <Toast msg={toastMsg} />
+        <>
+            <SheetToast msg={toastMsg} zClassName="z-[200]" />
 
-<<<<<<< Updated upstream
-                    {/* Backdrop */}
-                    <motion.div
-                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                        onClick={() => step !== 3 && onClose()}
-                        className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-[4px]"
-                    />
-=======
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
                 {step !== 3 && (
                     <div className="flex-shrink-0 border-b border-gray-100 px-4 pb-3 pt-3">
@@ -618,7 +562,7 @@ function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCa
                             <motion.h2
                                 key={step}
                                 custom={slideDir}
-                                variants={sheetTitleSlideVariants}
+                                variants={titleVariants}
                                 initial="initial"
                                 animate="animate"
                                 exit="exit"
@@ -636,54 +580,16 @@ function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCa
                         </motion.span>
                     </div>
                 )}
->>>>>>> Stashed changes
 
-                    {/* Bottom Sheet */}
-                    <motion.div
-                        initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-                        transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-                        drag={step !== 3 ? 'y' : false}
-                        dragConstraints={{ top: 0, bottom: 0 }}
-                        dragElastic={0.05}
-                        onDragEnd={(_, info) => { if (info.offset.y > 100 && step !== 3) onClose(); }}
-                        className="fixed bottom-0 left-0 right-0 z-[101] bg-white w-full mx-auto md:max-w-[480px] xl:max-w-[480px] origin-bottom rounded-none md:rounded-t-[24px] shadow-2xl flex flex-col h-[100vh] h-[100dvh] md:h-auto md:max-h-[90vh]"
-                    >
-                        {/* Drag Handle */}
-                        {step !== 3 ? (
-                            <div className="flex justify-center pt-3 pb-2 flex-shrink-0 bg-[#16a34a] md:bg-white rounded-none md:rounded-t-[24px]">
-                                <div className="w-12 h-1.5 md:w-10 md:h-1 rounded-full bg-white/30 md:bg-gray-300" />
-                            </div>
-                        ) : (
-                            <div className="flex justify-center pt-3 pb-2 flex-shrink-0">
-                                <div className="w-10 h-1 rounded-full bg-gray-300" />
-                            </div>
-                        )}
+                <div className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+                            <AnimatePresence mode="wait" custom={slideDir} initial={false}>
 
-<<<<<<< Updated upstream
-                        {/* Header */}
-                        {step !== 3 && (
-                            <div className="px-5 pb-3 pt-2 md:pt-0 flex-shrink-0 bg-[#16a34a] md:bg-white text-white md:text-gray-900">
-                                <div className="flex items-center justify-between mb-3">
-                                    <h2 className="text-xl md:text-xl font-bold">Complete Your Order</h2>
-                                    <button onClick={onClose} className="p-1 rounded-full hover:bg-white/20 md:hover:bg-gray-100 transition-colors">
-                                        <X className="w-5 h-5 text-white/80 md:text-gray-500" />
-                                    </button>
-                                </div>
-                                <div className="flex items-center gap-2 mb-3">
-                                    <span className="bg-white/20 md:bg-green-100 text-white md:text-green-800 text-xs font-bold px-3 py-1.5 md:py-1 rounded-full md:border md:border-green-200">
-                                        {totalItems} items · ₹{grandTotal}
-                                    </span>
-                                </div>
-                                <div className="hidden md:block h-px bg-green-100 w-full" />
-                            </div>
-                        )}
-=======
                                 {/* ── STEP 0: Sign in (before address) ── */}
                                 {step === 0 && (
                                     <motion.div
                                         key="step0signin"
                                         custom={slideDir}
-                                        variants={sheetHorizontalSlideVariants}
+                                        variants={slideVariants}
                                         initial="enter"
                                         animate="center"
                                         exit="exit"
@@ -698,95 +604,48 @@ function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCa
                                         />
                                     </motion.div>
                                 )}
->>>>>>> Stashed changes
 
-                        {/* Step Indicator */}
-                        {step !== 3 && (
-                            <div className="px-5 py-3 md:py-2 flex items-center justify-between flex-shrink-0 text-[11px] font-bold uppercase tracking-wider bg-[#16a34a] md:bg-white shadow-[0_4px_12px_rgba(0,0,0,0.05)] md:shadow-none z-10">
-                                <div className={`flex items-center gap-1.5 ${step === 1 ? 'text-white md:text-green-700' : 'text-white md:text-green-700'}`}>
-                                    {step > 1 ? <Check className="w-4 h-4 text-white md:text-green-600" /> : <div className="w-4 h-4 rounded-full bg-white md:bg-green-600 flex items-center justify-center text-[#16a34a] md:text-white text-[9px]">1</div>}
-                                    <span>Delivery</span>
-                                </div>
-                                <div className={`h-px flex-1 mx-2 ${step > 1 ? 'bg-white/50 md:bg-green-500' : 'bg-[#15803d] md:bg-gray-200'}`} />
-                                <div className={`flex items-center gap-1.5 ${step === 2 ? 'text-white md:text-green-700' : 'text-[#14532d] md:text-gray-400'}`}>
-                                    <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] ${step === 2 ? 'bg-white text-[#16a34a] md:bg-green-600 md:text-white' : 'bg-[#15803d] text-white/50 md:bg-gray-200 md:text-gray-500'}`}>2</div>
-                                    <span>Payment</span>
-                                </div>
-                                <div className="h-px flex-1 mx-2 bg-[#15803d] md:bg-gray-200" />
-                                <div className="flex items-center gap-1.5 text-[#14532d] md:text-gray-400">
-                                    <div className="w-4 h-4 rounded-full bg-[#15803d] md:bg-gray-200 flex items-center justify-center text-[9px] text-white/50 md:text-gray-500">3</div>
-                                    <span>Confirm</span>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Content */}
-                        <div className="flex-1 overflow-y-auto relative min-h-[300px] overflow-x-hidden">
-                            <AnimatePresence mode="wait" custom={step}>
-
-                                {/* ── STEP 1 ── */}
+                                {/* ── STEP 1: Confirm address & delivery ── */}
                                 {step === 1 && (
                                     <motion.div
                                         key="step1"
-<<<<<<< Updated upstream
-                                        variants={slideVariants}
-                                        initial="enter" animate="center" exit="exit"
-                                        transition={{ duration: 0.3, ease: 'easeInOut' }}
-                                        className="p-5 flex flex-col gap-5"
-=======
                                         custom={slideDir}
-                                        variants={sheetHorizontalSlideVariants}
+                                        variants={slideVariants}
                                         initial="enter"
                                         animate="center"
                                         exit="exit"
                                         className="flex flex-col gap-5 px-5 pb-6 pt-2"
->>>>>>> Stashed changes
                                     >
                                         {step1Error && (
-                                            <div className="text-red-500 text-sm font-semibold bg-red-50 p-3 rounded-lg border border-red-200">
+                                            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-500">
                                                 {step1Error}
                                             </div>
                                         )}
 
-                                        {/* ── Phone input (always shown) ── */}
-                                        <div>
-                                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">
-                                                Your Phone Number
-                                            </label>
-                                            <div className="flex items-center gap-2">
-                                                <div className={`flex-1 flex items-center rounded-xl border overflow-hidden transition-all ${phoneError ? 'border-red-400' : otpStep === 'verified' ? 'border-green-500' : 'border-gray-200 focus-within:border-green-500'}`}>
-                                                    <span className="px-3 md:px-3 h-[52px] md:h-auto flex items-center text-gray-500 text-[16px] md:text-sm font-medium border-r border-gray-200 bg-gray-50 select-none flex-shrink-0">+91</span>
-                                                    <input
-                                                        type="tel"
-                                                        inputMode="numeric"
-                                                        value={phone}
-                                                        onChange={handlePhoneChange}
-                                                        disabled={otpStep === 'verified' || otpStep === 'sent' || otpStep === 'profile'}
-                                                        placeholder="9876543210"
-                                                        className="flex-1 bg-transparent h-[52px] md:h-auto py-3 pl-3 pr-3 text-[16px] md:text-sm focus:outline-none disabled:text-gray-500"
-                                                    />
-                                                    {otpStep === 'verified' && (
-                                                        <CheckCircle2 className="w-5 h-5 text-green-500 mr-3 flex-shrink-0" />
-                                                    )}
-                                                </div>
-                                                {otpStep === 'idle' && (
-                                                    <button
-                                                        onClick={handleSendOtp}
-                                                        disabled={!isPhoneValid || sendingOtp}
-                                                        className="flex-shrink-0 px-4 h-[52px] md:h-auto md:py-3 rounded-xl text-[16px] md:text-sm font-bold text-white bg-green-600 hover:bg-green-700 disabled:bg-gray-200 disabled:text-gray-400 transition-colors"
-                                                    >
-                                                        {sendingOtp ? '...' : 'Send OTP'}
-                                                    </button>
-                                                )}
-                                            </div>
-                                            {phoneError && <p className="mt-1 text-xs text-red-500 font-medium">{phoneError}</p>}
+                                        <div className="flex rounded-xl bg-gray-100 p-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setDeliveryType('delivery');
+                                                    setDeliveryFormExpanded(false);
+                                                    onOrderTypeChange?.('delivery');
+                                                }}
+                                                className={`flex h-[48px] flex-1 items-center justify-center gap-2 rounded-lg text-[15px] font-bold transition-all md:h-auto md:py-2.5 md:text-sm ${deliveryType === 'delivery' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                                            >
+                                                <Truck className="h-4 w-4" /> Delivery
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setDeliveryType('pickup');
+                                                    onOrderTypeChange?.('pickup');
+                                                }}
+                                                className={`flex h-[48px] flex-1 items-center justify-center gap-2 rounded-lg text-[15px] font-bold transition-all md:h-auto md:py-2.5 md:text-sm ${deliveryType === 'pickup' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                                            >
+                                                <Store className="h-4 w-4" /> Pickup
+                                            </button>
                                         </div>
 
-<<<<<<< Updated upstream
-                                        {/* ── Inline OTP boxes (expand after Send OTP) ── */}
-                                        <AnimatePresence>
-                                            {otpStep === 'sent' && (
-=======
                                         <AnimatePresence mode="wait">
                                             {deliveryType === 'delivery' ? (
                                                 deliveryCompactSaved && matchingSavedForPin ? (
@@ -810,9 +669,11 @@ function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCa
                                                                             {matchingSavedForPin.recipient_name || 'Saved address'}
                                                                         </span>
                                                                         {matchingSavedForPin.address_type &&
-                                                                            isSavedAddressType(matchingSavedForPin.address_type) && (
+                                                                            (matchingSavedForPin.address_type === 'home' ||
+                                                                                matchingSavedForPin.address_type === 'work' ||
+                                                                                matchingSavedForPin.address_type === 'other') && (
                                                                                 <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-green-800">
-                                                                                    {savedAddressTypeLabel(matchingSavedForPin.address_type)}
+                                                                                    {ADDRESS_TYPE_LABELS[matchingSavedForPin.address_type]}
                                                                                 </span>
                                                                             )}
                                                                     </div>
@@ -936,7 +797,7 @@ function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCa
                                                                                 : 'text-gray-600 hover:text-gray-900'
                                                                         }`}
                                                                     >
-                                                                        {savedAddressTypeLabel(t)}
+                                                                        {ADDRESS_TYPE_LABELS[t]}
                                                                     </button>
                                                                 ))}
                                                             </div>
@@ -993,9 +854,8 @@ function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCa
                                                                                         </span>
                                                                                         {row.address_type && (
                                                                                             <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-green-800">
-                                                                                                {savedAddressTypeLabel(row.address_type, {
-                                                                                                    unknownLabel: row.address_type,
-                                                                                                })}
+                                                                                                {ADDRESS_TYPE_LABELS[row.address_type as AddressType] ||
+                                                                                                    row.address_type}
                                                                                             </span>
                                                                                         )}
                                                                                     </div>
@@ -1032,8 +892,10 @@ function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCa
                                                                     <span className="font-semibold">Already saved.</span>{' '}
                                                                     This pin matches your saved address
                                                                     {matchingSavedForPin.address_type &&
-                                                                    isSavedAddressType(matchingSavedForPin.address_type)
-                                                                        ? ` (${savedAddressTypeLabel(matchingSavedForPin.address_type)})`
+                                                                    (matchingSavedForPin.address_type === 'home' ||
+                                                                        matchingSavedForPin.address_type === 'work' ||
+                                                                        matchingSavedForPin.address_type === 'other')
+                                                                        ? ` (${ADDRESS_TYPE_LABELS[matchingSavedForPin.address_type]})`
                                                                         : ''}
                                                                     . You can still place the order without saving again.
                                                                 </p>
@@ -1052,268 +914,51 @@ function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCa
                                                     </motion.div>
                                                 )
                                             ) : (
->>>>>>> Stashed changes
                                                 <motion.div
+                                                    key="pickup-fields"
                                                     initial={{ opacity: 0, height: 0 }}
                                                     animate={{ opacity: 1, height: 'auto' }}
                                                     exit={{ opacity: 0, height: 0 }}
-                                                    transition={{ duration: 0.3, ease: 'easeInOut' }}
+                                                    transition={{ duration: 0.25 }}
                                                     className="overflow-hidden"
                                                 >
-                                                    <div className="pb-2">
-                                                        <p className="text-xs text-gray-500 mb-3">
-                                                            Enter the 6-digit OTP sent to <span className="font-semibold text-gray-700">+91 {phone}</span>
-                                                        </p>
-                                                        <motion.div
-                                                            animate={otpShake ? shakeAnim : {}}
-                                                            className={`flex justify-between gap-1.5 ${otpLoading ? 'opacity-60 pointer-events-none' : ''}`}
-                                                            onPaste={handleOtpPaste}
-                                                        >
-                                                            {otpDigits.map((digit, index) => {
-                                                                const isFilled = digit !== '';
-                                                                const statusColor = otpShake
-                                                                    ? 'border-red-500 bg-red-50'
-                                                                    : isFilled ? 'border-green-500 text-gray-900' : 'border-gray-200';
-                                                                return (
-                                                                    <motion.input
-                                                                        key={index}
-                                                                        ref={el => { otpRefs.current[index] = el; }}
-                                                                        type="text"
-                                                                        inputMode="numeric"
-                                                                        autoComplete="one-time-code"
-                                                                        maxLength={1}
-                                                                        value={digit}
-                                                                        onChange={e => handleOtpChange(index, e.target.value)}
-                                                                        onKeyDown={e => handleOtpKeyDown(index, e)}
-                                                                        animate={isFilled && !otpShake ? { scale: [1, 1.08, 1] } : { scale: 1 }}
-                                                                        transition={{ duration: 0.12 }}
-                                                                        className={`w-[52px] h-[60px] md:w-[44px] md:h-[52px] text-center text-[24px] md:text-[22px] font-semibold rounded-xl outline-none transition-all duration-150 border-[1.5px] ${statusColor} caret-green-600 focus:border-green-500 focus:shadow-[0_0_0_1.5px_rgba(21,128,61,0.2)]`}
-                                                                    />
-                                                                );
-                                                            })}
-                                                        </motion.div>
-                                                        <div className="mt-3 flex items-center justify-center h-6">
-                                                            {otpLoading ? (
-                                                                <div className="flex items-center gap-2 text-sm text-gray-500">
-                                                                    <div className="w-3.5 h-3.5 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
-                                                                    Verifying...
-                                                                </div>
-                                                            ) : (
-                                                                <button
-                                                                    onClick={handleResendOtp}
-                                                                    disabled={resendCooldown > 0}
-                                                                    className={`text-[13px] font-semibold transition-colors ${resendCooldown > 0 ? 'text-gray-400 cursor-not-allowed' : 'text-green-700 hover:text-green-800'}`}
-                                                                >
-                                                                    {resendCooldown > 0
-                                                                        ? `Resend OTP in 0:${resendCooldown.toString().padStart(2, '0')}`
-                                                                        : 'Resend OTP'}
-                                                                </button>
-                                                            )}
+                                                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">Pickup location</label>
+                                                    <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+                                                        <div className="flex gap-3">
+                                                            <Store className="mt-0.5 h-5 w-5 shrink-0 text-green-700" />
+                                                            <div>
+                                                                <p className="font-bold text-gray-900">{nearestOutlet?.name || 'Nile Cafe Main'}</p>
+                                                                <p className="mt-1 text-sm leading-snug text-gray-600">{nearestOutlet?.address || 'Store address'}</p>
+                                                                <p className="mt-2 inline-block rounded bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">You&apos;ll pick up from this branch</p>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </motion.div>
                                             )}
                                         </AnimatePresence>
 
-                                        <AnimatePresence>
-                                            {otpStep === 'profile' && (
-                                                <motion.div
-                                                    initial={{ opacity: 0, height: 0 }}
-                                                    animate={{ opacity: 1, height: 'auto' }}
-                                                    exit={{ opacity: 0, height: 0 }}
-                                                    transition={{ duration: 0.3, ease: 'easeInOut' }}
-                                                    className="overflow-hidden"
-                                                >
-                                                    <ProfileCompletionForm
-                                                        phone={phone}
-                                                        fullName={fullName}
-                                                        loading={profileLoading}
-                                                        onNameChange={setFullName}
-                                                        onSubmit={handleCompleteProfile}
-                                                        submitLabel="Save and continue"
-                                                    />
-                                                </motion.div>
-                                            )}
-                                        </AnimatePresence>
-
-                                        {/* ── After phone verified: show toggle + address fields ── */}
-                                        <AnimatePresence>
-                                            {otpStep === 'verified' && (
-                                                <motion.div
-                                                    initial={{ opacity: 0, height: 0 }}
-                                                    animate={{ opacity: 1, height: 'auto' }}
-                                                    exit={{ opacity: 0, height: 0 }}
-                                                    transition={{ duration: 0.35, ease: 'easeInOut' }}
-                                                    className="overflow-hidden space-y-5"
-                                                >
-                                                    {/* Delivery / Pickup toggle */}
-                                                    <div className="flex bg-gray-100 p-1 rounded-xl">
-                                    <button
-                                        onClick={() => {
-                                            setDeliveryType('delivery');
-                                            onOrderTypeChange?.('delivery');
-                                        }}
-                                        className={`flex-1 flex justify-center items-center gap-2 h-[48px] md:h-auto md:py-2.5 rounded-lg text-[15px] md:text-sm font-bold transition-all ${deliveryType === 'delivery' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
-                                    >
-                                                            <Truck className="w-4 h-4 md:w-4 md:h-4" /> Delivery
-                                                        </button>
-                                    <button
-                                        onClick={() => {
-                                            setDeliveryType('pickup');
-                                            onOrderTypeChange?.('pickup');
-                                        }}
-                                        className={`flex-1 flex justify-center items-center gap-2 h-[48px] md:h-auto md:py-2.5 rounded-lg text-[15px] md:text-sm font-bold transition-all ${deliveryType === 'pickup' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
-                                    >
-                                                            <Store className="w-4 h-4 md:w-4 md:h-4" /> Pickup
-                                                        </button>
-                                                    </div>
-
-                                                    {/* ── Delivery address fields ── */}
-                                                    <AnimatePresence mode="wait">
-                                                        {deliveryType === 'delivery' ? (
-                                                            <motion.div
-                                                                key="delivery-fields"
-                                                                initial={{ opacity: 0, height: 0 }}
-                                                                animate={{ opacity: 1, height: 'auto' }}
-                                                                exit={{ opacity: 0, height: 0 }}
-                                                                transition={{ duration: 0.25 }}
-                                                                className="overflow-hidden space-y-4"
-                                                            >
-                                                                {/* Flat / House */}
-                                                                <div>
-                                                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Flat / House / Apartment No.</label>
-                                                                    <input
-                                                                        type="text"
-                                                                        value={houseNo}
-                                                                        onChange={e => setHouseNo(e.target.value)}
-                                                                        placeholder="e.g. 12B, 2nd Floor"
-                                                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 h-[52px] md:h-[48px] text-[16px] md:text-sm focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-shadow"
-                                                                    />
-                                                                </div>
-
-                                                                {/* Delivery Area */}
-                                                                <div>
-                                                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Delivery Area</label>
-                                                                    <AnimatePresence mode="wait">
-                                                                        {!isChangingLocation ? (
-                                                                            <motion.div key="static" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex items-start gap-3">
-                                                                                <MapPin className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
-                                                                                <div>
-                                                                                    <p className="text-sm font-medium text-gray-900 line-clamp-2">{locationData?.displayName || 'Unknown Location'}</p>
-                                                                                    <button onClick={() => setIsChangingLocation(true)} className="text-xs text-green-600 font-bold mt-1 underline">Change</button>
-                                                                                </div>
-                                                                            </motion.div>
-                                                                        ) : (
-                                                                            <motion.div key="edit" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                                                                                <div className="flex items-center justify-between p-3 border-b border-gray-100 bg-gray-50">
-                                                                                    <div className="flex items-center gap-2 overflow-hidden pr-2">
-                                                                                        <MapPin className="w-4 h-4 text-gray-400 shrink-0" />
-                                                                                        <span className="text-sm text-gray-600 truncate">{locationData?.displayName || 'Unknown'}</span>
-                                                                                    </div>
-                                                                                    <button onClick={() => setIsChangingLocation(false)} className="shrink-0 p-1 hover:bg-gray-200 rounded-full transition-colors text-gray-500">
-                                                                                        <X className="w-4 h-4" />
-                                                                                    </button>
-                                                                                </div>
-                                                                                <div className="p-3">
-                                                                                    <div className="relative mb-3">
-                                                                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                                                                        <input
-                                                                                            type="text"
-                                                                                            value={locSearchQuery}
-                                                                                            onChange={e => setLocSearchQuery(e.target.value)}
-                                                                                            placeholder="Search area or pincode..."
-                                                                                            className="w-full pl-9 pr-3 h-[52px] md:h-[42px] bg-gray-50 border border-gray-200 rounded-lg text-[16px] md:text-sm focus:outline-none focus:border-green-500 transition-colors"
-                                                                                        />
-                                                                                        {isSearchingLoc && <div className="absolute right-3 top-1/2 -translate-y-1/2"><div className="w-3 h-3 border-2 border-green-500 border-t-transparent rounded-full animate-spin" /></div>}
-                                                                                    </div>
-                                                                                    {locResults.length > 0 && (
-                                                                                        <div className="mb-3 max-h-[120px] overflow-y-auto border border-gray-100 rounded-lg divide-y divide-gray-100">
-                                                                                            {locResults.map((res: any) => (
-                                                                                                <button key={res.place_id} onClick={() => handleSelectLocation(res)} className="w-full text-left px-3 py-2 text-sm hover:bg-green-50 transition-colors flex items-start gap-2">
-                                                                                                    <MapPin className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
-                                                                                                    <span className="text-gray-700 line-clamp-2">{res.display_name}</span>
-                                                                                                </button>
-                                                                                            ))}
-                                                                                        </div>
-                                                                                    )}
-                                                                                    <button
-                                                                                        onClick={() => { getCurrentLocation(); setIsChangingLocation(false); setLocSearchQuery(''); setLocResults([]); }}
-                                                                                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-green-700 font-semibold text-sm bg-green-50 hover:bg-green-100 transition-colors cursor-pointer"
-                                                                                    >
-                                                                                        <Navigation className="w-4 h-4" />
-                                                                                        Use my current GPS location
-                                                                                    </button>
-                                                                                </div>
-                                                                            </motion.div>
-                                                                        )}
-                                                                    </AnimatePresence>
-                                                                </div>
-
-                                                                {/* Instructions */}
-                                                                <div>
-                                                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Instructions (Optional)</label>
-                                                                    <textarea
-                                                                        value={instructions}
-                                                                        onChange={e => setInstructions(e.target.value)}
-                                                                        placeholder="E.g. Ring the bell, leave at door..."
-                                                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[16px] md:text-sm focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-shadow min-h-[80px] md:min-h-[72px] resize-none"
-                                                                    />
-                                                                </div>
-                                                            </motion.div>
-                                                        ) : (
-                                                            /* ── Pickup location card ── */
-                                                            <motion.div
-                                                                key="pickup-fields"
-                                                                initial={{ opacity: 0, height: 0 }}
-                                                                animate={{ opacity: 1, height: 'auto' }}
-                                                                exit={{ opacity: 0, height: 0 }}
-                                                                transition={{ duration: 0.25 }}
-                                                                className="overflow-hidden"
-                                                            >
-                                                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Pickup Location</label>
-                                                                <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-                                                                    <div className="flex gap-3">
-                                                                        <Store className="w-5 h-5 text-green-700 shrink-0 mt-0.5" />
-                                                                        <div>
-                                                                            <p className="font-bold text-gray-900">{nearestOutlet?.name || 'Nile Cafe Main'}</p>
-                                                                            <p className="text-sm text-gray-600 mt-1 leading-snug">{nearestOutlet?.address || 'Store Address'}</p>
-                                                                            <p className="text-xs text-green-700 font-semibold mt-2 bg-green-100 inline-block px-2 py-0.5 rounded">You'll pick up from this branch</p>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            </motion.div>
-                                                        )}
-                                                    </AnimatePresence>
-                                                </motion.div>
-                                            )}
-                                        </AnimatePresence>
-
-                                        <div className="pt-1 pb-6">
-                                            <button
-                                                onClick={handleContinueToStep2}
-                                                className="w-full bg-green-600 hover:bg-green-700 text-white font-bold h-[56px] md:h-[50px] rounded-xl text-[16px] md:text-[15px] shadow-lg shadow-green-600/20 transition-all active:scale-[0.98]"
+                                        <div className="pb-2 pt-1">
+                                            <motion.button
+                                                type="button"
+                                                onClick={handleContinueToPayment}
+                                                whileTap={{ scale: 0.98 }}
+                                                whileHover={{ scale: 1.01 }}
+                                                transition={{ type: 'spring', stiffness: 480, damping: 28 }}
+                                                className="h-[56px] w-full rounded-xl bg-green-600 text-[16px] font-bold text-white shadow-lg shadow-green-600/20 transition-colors hover:bg-green-700 md:h-[50px] md:text-[15px]"
                                             >
-                                                Continue →
-                                            </button>
+                                                Continue to payment →
+                                            </motion.button>
                                         </div>
                                     </motion.div>
                                 )}
 
 
-                                {/* ── STEP 2: PAYMENT ── */}
+                                {/* ── STEP 2: Payment & coupons ── */}
                                 {step === 2 && (
                                     <motion.div
-<<<<<<< Updated upstream
-                                        key="step2"
-                                        variants={slideVariants}
-                                        initial="enter" animate="center" exit="exit"
-                                        transition={{ duration: 0.3, ease: 'easeInOut' }}
-                                        className="p-5 flex flex-col gap-6"
-                                    >
-=======
                                         key="step2pay"
                                         custom={slideDir}
-                                        variants={sheetHorizontalSlideVariants}
+                                        variants={slideVariants}
                                         initial="enter"
                                         animate="center"
                                         exit="exit"
@@ -1323,7 +968,7 @@ function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCa
                                             <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Order summary</p>
                                             <div className="flex justify-between text-[13px]">
                                                 <span className="text-gray-500">Subtotal</span>
-                                                <span className="font-medium text-gray-900">₹{subtotal}</span>
+                                                <span className="font-medium text-gray-900">₹{Math.round(totalPrice)}</span>
                                             </div>
                                             <div className="flex justify-between text-[13px]">
                                                 <span className="text-gray-500">GST (5%)</span>
@@ -1353,7 +998,6 @@ function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCa
 
                                         <CouponSection onApply={handleApplyCoupon} applied={couponCode} />
 
->>>>>>> Stashed changes
                                         <div className="grid grid-cols-2 gap-3">
                                             {([
                                                 { key: 'cash', label: 'Cash on Delivery', Icon: Banknote },
@@ -1394,11 +1038,15 @@ function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCa
                                             )}
                                         </AnimatePresence>
 
-                                        <div className="pt-4 pb-6 mt-auto flex flex-col items-center">
-                                            <button
+                                        <div className="mt-auto flex flex-col items-center pb-2 pt-4">
+                                            <motion.button
+                                                type="button"
                                                 disabled={!paymentMethod || isSubmitting}
                                                 onClick={handlePlaceOrder}
-                                                className={`w-full font-bold h-[56px] md:h-[50px] text-[16px] md:text-[15px] rounded-xl transition-all shadow-lg active:scale-[0.98] flex items-center justify-center gap-2 ${!paymentMethod ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none' : 'bg-green-600 hover:bg-green-700 text-white shadow-green-600/20'}`}
+                                                whileTap={!paymentMethod || isSubmitting ? undefined : { scale: 0.98 }}
+                                                whileHover={!paymentMethod || isSubmitting ? undefined : { scale: 1.01 }}
+                                                transition={{ type: 'spring', stiffness: 480, damping: 28 }}
+                                                className={`flex h-[56px] w-full items-center justify-center gap-2 rounded-xl text-[16px] font-bold shadow-lg md:h-[50px] md:text-[15px] ${!paymentMethod ? 'cursor-not-allowed bg-gray-200 text-gray-400 shadow-none' : 'bg-green-600 text-white shadow-green-600/20 transition-colors hover:bg-green-700'}`}
                                             >
                                                 {isSubmitting ? (
                                                     <>
@@ -1408,8 +1056,10 @@ function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCa
                                                         </svg>
                                                         Placing Order...
                                                     </>
-                                                ) : <>Place Order →</>}
-                                            </button>
+                                                ) : (
+                                                    <>Place Order →</>
+                                                )}
+                                            </motion.button>
                                             <div className="flex items-center gap-1.5 mt-3 text-gray-400">
                                                 <ShieldCheck className="w-4 h-4 text-green-500" />
                                                 <span className="text-xs font-semibold uppercase tracking-wider">Secure Checkout</span>
@@ -1421,20 +1071,13 @@ function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCa
                                 {/* ── STEP 3: SUCCESS ── */}
                                 {step === 3 && (
                                     <motion.div
-<<<<<<< Updated upstream
-                                        key="step3"
-                                        initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-                                        transition={{ duration: 0.4, ease: 'easeOut' }}
-                                        className="p-8 flex flex-col items-center justify-center h-full text-center pb-12"
-=======
                                         key="step3ok"
                                         custom={slideDir}
-                                        variants={sheetHorizontalSlideVariants}
+                                        variants={slideVariants}
                                         initial="enter"
                                         animate="center"
                                         exit="exit"
                                         className="flex h-full flex-col items-center justify-center px-8 pb-12 pt-6 text-center"
->>>>>>> Stashed changes
                                     >
                                         <div className="mb-6 relative">
                                             <svg className="w-24 h-24 text-green-500" viewBox="0 0 100 100">
@@ -1452,10 +1095,10 @@ function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCa
                                             {deliveryType === 'delivery' ? 'Estimated delivery: 30-45 mins 🛵' : 'Ready for pickup in 15 mins 🏪'}
                                         </p>
                                         <div className="flex flex-col w-full gap-3">
-                                            <button onClick={() => { onClose(); navigate(`/orders/${orderId}`); }} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold h-[56px] md:h-[50px] text-[16px] md:text-[15px] rounded-xl shadow-lg shadow-green-600/20 transition-all active:scale-[0.98]">
+                                            <button onClick={() => { onDismiss(); navigate(`/orders/${orderId}`); }} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold h-[56px] md:h-[50px] text-[16px] md:text-[15px] rounded-xl shadow-lg shadow-green-600/20 transition-all active:scale-[0.98]">
                                                 Track Order
                                             </button>
-                                            <button onClick={() => { onClose(); navigate('/menu'); }} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold h-[56px] md:h-[50px] text-[16px] md:text-[15px] rounded-xl transition-all active:scale-[0.98]">
+                                            <button onClick={() => { onDismiss(); navigate('/menu'); }} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold h-[56px] md:h-[50px] text-[16px] md:text-[15px] rounded-xl transition-all active:scale-[0.98]">
                                                 Continue Shopping
                                             </button>
                                         </div>
@@ -1463,12 +1106,11 @@ function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCa
                                 )}
 
                             </AnimatePresence>
-                        </div>
-                    </motion.div>
-                </>
-            )}
-        </AnimatePresence>
+                </div>
+            </div>
+        </>
     );
-};
+}
 
-export default CheckoutDrawer;
+/** Same implementation as {@link CheckoutFlowContent}; name aligns with other customer-facing sheets. */
+export { CheckoutFlowContent as CheckoutSheetContent };

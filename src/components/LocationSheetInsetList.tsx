@@ -1,7 +1,7 @@
 import React from "react";
 import { ChevronRight } from "lucide-react";
 
-type LocationSheetInsetListItem = {
+export type LocationSheetInsetListItem = {
     id: string;
     title: string;
     subtitle?: string;

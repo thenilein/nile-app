@@ -8,7 +8,6 @@ import { SheetLoginStep } from "./SheetLoginStep.tsx";
 import { useAuth } from "../context/AuthContext.tsx";
 import { useLocation as useDeliveryLocation, type LocationData } from "../context/LocationContext.tsx";
 import { sheetCapsuleIconBtn, sheetCapsuleTextBtn } from "../lib/sheetCapsuleStyles.ts";
-import { sheetHorizontalSlideVariants } from "../lib/sheetMotion.ts";
 
 export interface LocationPickerSheetProps {
     isOpen: boolean;
@@ -36,134 +35,24 @@ function locationKey(data: LocationData | null): string | null {
     return `${data.latitude},${data.longitude},${data.displayName}`;
 }
 
-type LocationSheetLayout = "desktop" | "mobile";
+const easeSmooth = [0.22, 1, 0.36, 1] as const;
 
-type LocationPickerHeaderProps = {
-    layout: LocationSheetLayout;
-    effectiveAuthGate: boolean;
-    gateLoading: boolean;
-    phase: "auth" | "location";
-    headerTitle: string;
-    headerSubtitle: string;
-    hasUserSession: boolean;
-    showAuthPanel: boolean;
-    onLeadingBack: () => void;
-    onClose: () => void;
-    onGuestSkip: () => void;
+const slideVariants = {
+    enter: (dir: number) => ({
+        x: dir > 0 ? "100%" : "-100%",
+        opacity: 0,
+    }),
+    center: {
+        x: 0,
+        opacity: 1,
+        transition: { duration: 0.38, ease: easeSmooth },
+    },
+    exit: (dir: number) => ({
+        x: dir > 0 ? "-100%" : "100%",
+        opacity: 0,
+        transition: { duration: 0.3, ease: easeSmooth },
+    }),
 };
-
-function getLeadingButtonLabel(
-    gateLoading: boolean,
-    phase: "auth" | "location",
-    hasUserSession: boolean,
-): "Close" | "Back" {
-    return gateLoading || phase === "auth" || hasUserSession ? "Close" : "Back";
-}
-
-function LocationPickerHeader({
-    layout,
-    effectiveAuthGate,
-    gateLoading,
-    phase,
-    headerTitle,
-    headerSubtitle,
-    hasUserSession,
-    showAuthPanel,
-    onLeadingBack,
-    onClose,
-    onGuestSkip,
-}: LocationPickerHeaderProps) {
-    const isDesktop = layout === "desktop";
-
-    if (effectiveAuthGate) {
-        return (
-            <div className={isDesktop ? "flex shrink-0 flex-col border-b border-[#E5E7EB] px-6 pb-5 pt-3" : ""}>
-                <div className="flex items-center justify-between gap-3">
-                    <button
-                        type="button"
-                        onClick={onLeadingBack}
-                        className={sheetCapsuleIconBtn}
-                        aria-label={getLeadingButtonLabel(gateLoading, phase, hasUserSession)}
-                    >
-                        <ChevronLeft className="h-[18px] w-[18px]" strokeWidth={2.25} />
-                    </button>
-                    {showAuthPanel && (
-                        <button type="button" onClick={onGuestSkip} className={sheetCapsuleTextBtn}>
-                            Skip
-                        </button>
-                    )}
-                </div>
-                <div className={isDesktop ? "mt-3" : "mt-2"}>
-                    {isDesktop ? (
-                        <p className="text-balance text-[15px] font-bold leading-snug text-[#111827]">
-                            {headerTitle}
-                        </p>
-                    ) : (
-                        <h2 className="text-balance text-[17px] font-semibold leading-snug text-[#111827] sm:text-[18px]">
-                            {headerTitle}
-                        </h2>
-                    )}
-                    {headerSubtitle ? (
-                        <p className="mt-1 text-[12px] text-[#6B7280]">{headerSubtitle}</p>
-                    ) : null}
-                </div>
-            </div>
-        );
-    }
-
-    return (
-        <div className={isDesktop ? "flex shrink-0 items-start gap-3 border-b border-[#E5E7EB] px-6 py-5" : ""}>
-            <button
-                type="button"
-                onClick={onClose}
-                className={sheetCapsuleIconBtn}
-                aria-label="Close"
-            >
-                <ChevronLeft className="h-[18px] w-[18px]" strokeWidth={2.25} />
-            </button>
-            <div className="min-w-0 flex-1 pt-0.5">
-                {isDesktop ? (
-                    <p className="text-[14px] font-bold text-[#111827]">{headerTitle}</p>
-                ) : (
-                    <h2 className="text-[18px] font-semibold text-[#111827]">{headerTitle}</h2>
-                )}
-                <p className="mt-1 text-[12px] text-[#6B7280]">{headerSubtitle}</p>
-            </div>
-        </div>
-    );
-}
-
-function LocationPickerPrimaryFooter({
-    layout,
-    label,
-    onClick,
-}: {
-    layout: LocationSheetLayout;
-    label: string;
-    onClick: () => void;
-}) {
-    const isDesktop = layout === "desktop";
-
-    return (
-        <div
-            className={
-                isDesktop
-                    ? "shrink-0 border-t border-[#E5E7EB] px-6 py-4"
-                    : "flex-shrink-0 border-t border-[#E5E7EB] px-5 pt-3"
-            }
-        >
-            <button
-                type="button"
-                onClick={onClick}
-                className={`h-[50px] w-full rounded-xl bg-neutral-950 font-semibold text-white transition-transform active:scale-[0.98] ${
-                    isDesktop ? "text-[15px]" : "text-[16px]"
-                }`}
-            >
-                {label}
-            </button>
-        </div>
-    );
-}
 
 /** Overlay + desktop modal / mobile bottom sheet for choosing delivery location. */
 export const LocationPickerSheet: React.FC<LocationPickerSheetProps> = ({
@@ -343,7 +232,7 @@ export const LocationPickerSheet: React.FC<LocationPickerSheetProps> = ({
                         <motion.div
                             key="location-sheet-auth"
                             custom={slideDir}
-                            variants={sheetHorizontalSlideVariants}
+                            variants={slideVariants}
                             initial="enter"
                             animate="center"
                             exit="exit"
@@ -363,7 +252,7 @@ export const LocationPickerSheet: React.FC<LocationPickerSheetProps> = ({
                         <motion.div
                             key="location-sheet-pick"
                             custom={slideDir}
-                            variants={sheetHorizontalSlideVariants}
+                            variants={slideVariants}
                             initial="enter"
                             animate="center"
                             exit="exit"
@@ -376,6 +265,32 @@ export const LocationPickerSheet: React.FC<LocationPickerSheetProps> = ({
             )}
         </div>
     );
+
+    const desktopFooter =
+        showLocationPanel && primaryAction ? (
+            <div className="shrink-0 border-t border-[#E5E7EB] px-6 py-4">
+                <button
+                    type="button"
+                    onClick={handlePrimary}
+                    className="h-[50px] w-full rounded-xl bg-neutral-950 text-[15px] font-semibold text-white transition-transform active:scale-[0.98]"
+                >
+                    {primaryAction.label}
+                </button>
+            </div>
+        ) : null;
+
+    const mobileFooter =
+        showLocationPanel && primaryAction ? (
+            <div className="flex-shrink-0 border-t border-[#E5E7EB] px-5 pt-3">
+                <button
+                    type="button"
+                    onClick={handlePrimary}
+                    className="h-[50px] w-full rounded-xl bg-neutral-950 text-[16px] font-semibold text-white transition-transform active:scale-[0.98]"
+                >
+                    {primaryAction.label}
+                </button>
+            </div>
+        ) : null;
 
     return (
         <>
@@ -395,19 +310,54 @@ export const LocationPickerSheet: React.FC<LocationPickerSheetProps> = ({
                             useCompactAuthSheet ? "min-h-0" : "min-h-[min(58vh,560px)]"
                         }`}
                     >
-                        <LocationPickerHeader
-                            layout="desktop"
-                            effectiveAuthGate={effectiveAuthGate}
-                            gateLoading={gateLoading}
-                            phase={phase}
-                            headerTitle={headerTitle}
-                            headerSubtitle={headerSubtitle}
-                            hasUserSession={Boolean(user?.id)}
-                            showAuthPanel={showAuthPanel}
-                            onLeadingBack={handleLeadingBack}
-                            onClose={onClose}
-                            onGuestSkip={handleGuestSkip}
-                        />
+                        {effectiveAuthGate ? (
+                            <div className="flex shrink-0 flex-col border-b border-[#E5E7EB] px-6 pb-5 pt-3">
+                                <div className="flex items-center justify-between gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={handleLeadingBack}
+                                        className={sheetCapsuleIconBtn}
+                                        aria-label={
+                                            gateLoading || phase === "auth"
+                                                ? "Close"
+                                                : user?.id
+                                                  ? "Close"
+                                                  : "Back"
+                                        }
+                                    >
+                                        <ChevronLeft className="h-[18px] w-[18px]" strokeWidth={2.25} />
+                                    </button>
+                                    {showAuthPanel && (
+                                        <button type="button" onClick={handleGuestSkip} className={sheetCapsuleTextBtn}>
+                                            Skip
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="mt-3">
+                                    <p className="text-balance text-[15px] font-bold leading-snug text-[#111827]">
+                                        {headerTitle}
+                                    </p>
+                                    {headerSubtitle ? (
+                                        <p className="mt-1 text-[12px] text-[#6B7280]">{headerSubtitle}</p>
+                                    ) : null}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex shrink-0 items-start gap-3 border-b border-[#E5E7EB] px-6 py-5">
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    className={sheetCapsuleIconBtn}
+                                    aria-label="Close"
+                                >
+                                    <ChevronLeft className="h-[18px] w-[18px]" strokeWidth={2.25} />
+                                </button>
+                                <div className="min-w-0 flex-1 pt-0.5">
+                                    <p className="text-[14px] font-bold text-[#111827]">{headerTitle}</p>
+                                    <p className="mt-1 text-[12px] text-[#6B7280]">{headerSubtitle}</p>
+                                </div>
+                            </div>
+                        )}
                         {effectiveAuthGate ? (
                             renderAuthGateBody()
                         ) : (
@@ -415,13 +365,7 @@ export const LocationPickerSheet: React.FC<LocationPickerSheetProps> = ({
                                 <LocationPickerContent active={isOpen} />
                             </div>
                         )}
-                        {showLocationPanel && primaryAction ? (
-                            <LocationPickerPrimaryFooter
-                                layout="desktop"
-                                label={primaryAction.label}
-                                onClick={handlePrimary}
-                            />
-                        ) : null}
+                        {desktopFooter}
                     </div>
                 </div>
             </div>
@@ -434,19 +378,54 @@ export const LocationPickerSheet: React.FC<LocationPickerSheetProps> = ({
                     style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}
                 >
                     <div className="flex-shrink-0 px-5 pb-3 pt-3">
-                        <LocationPickerHeader
-                            layout="mobile"
-                            effectiveAuthGate={effectiveAuthGate}
-                            gateLoading={gateLoading}
-                            phase={phase}
-                            headerTitle={headerTitle}
-                            headerSubtitle={headerSubtitle}
-                            hasUserSession={Boolean(user?.id)}
-                            showAuthPanel={showAuthPanel}
-                            onLeadingBack={handleLeadingBack}
-                            onClose={onClose}
-                            onGuestSkip={handleGuestSkip}
-                        />
+                        {effectiveAuthGate ? (
+                            <>
+                                <div className="flex items-center justify-between gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={handleLeadingBack}
+                                        className={sheetCapsuleIconBtn}
+                                        aria-label={
+                                            gateLoading || phase === "auth"
+                                                ? "Close"
+                                                : user?.id
+                                                  ? "Close"
+                                                  : "Back"
+                                        }
+                                    >
+                                        <ChevronLeft className="h-[18px] w-[18px]" strokeWidth={2.25} />
+                                    </button>
+                                    {showAuthPanel && (
+                                        <button type="button" onClick={handleGuestSkip} className={sheetCapsuleTextBtn}>
+                                            Skip
+                                        </button>
+                                    )}
+                                </div>
+                                <h2 className="mt-2 text-balance text-[17px] font-semibold leading-snug text-[#111827] sm:text-[18px]">
+                                    {headerTitle}
+                                </h2>
+                                {headerSubtitle ? (
+                                    <p className="mt-1 text-[12px] text-[#6B7280]">{headerSubtitle}</p>
+                                ) : null}
+                            </>
+                        ) : (
+                            <>
+                                <div className="flex items-start gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={onClose}
+                                        className={sheetCapsuleIconBtn}
+                                        aria-label="Close"
+                                    >
+                                        <ChevronLeft className="h-[18px] w-[18px]" strokeWidth={2.25} />
+                                    </button>
+                                    <div className="min-w-0 flex-1 pt-0.5">
+                                        <h2 className="text-[18px] font-semibold text-[#111827]">{headerTitle}</h2>
+                                        <p className="mt-1 text-[12px] text-[#6B7280]">{headerSubtitle}</p>
+                                    </div>
+                                </div>
+                            </>
+                        )}
                     </div>
                     {effectiveAuthGate ? (
                         renderAuthGateBody()
@@ -455,16 +434,11 @@ export const LocationPickerSheet: React.FC<LocationPickerSheetProps> = ({
                             <LocationPickerContent active={isOpen} />
                         </div>
                     )}
-                    {showLocationPanel && primaryAction ? (
-                        <LocationPickerPrimaryFooter
-                            layout="mobile"
-                            label={primaryAction.label}
-                            onClick={handlePrimary}
-                        />
-                    ) : null}
+                    {mobileFooter}
                 </div>
             </div>
         </>
     );
 };
 
+export default LocationPickerSheet;
