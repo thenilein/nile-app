@@ -175,14 +175,14 @@ const OtpVerification: React.FC<OtpVerificationProps> = ({
               const isFocused = focusedIndex === index;
               const isFilled = digit !== "";
               const statusColor = success
-                ? "border-green-500 bg-green-50 text-green-700"
+                ? "border-gray-500 bg-gray-100 text-gray-900"
                 : shake
                   ? "border-red-500 bg-red-50"
                   : isFocused
-                    ? "border-green-500 bg-green-50/30 shadow-[0_0_0_1.5px_rgba(21,128,61,0.2)]"
+                    ? "border-gray-500 bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.12)]"
                     : isFilled
-                      ? "border-green-500 text-gray-900"
-                      : "border-gray-200";
+                      ? "border-gray-400 text-gray-900"
+                      : "border-gray-300";
 
               return (
                 <motion.input
@@ -205,7 +205,7 @@ const OtpVerification: React.FC<OtpVerificationProps> = ({
                       : { scale: 1 }
                   }
                   transition={{ duration: 0.15 }}
-                  className={`relative z-10 w-[48px] h-[56px] text-center text-[24px] font-semibold rounded-xl outline-none transition-all duration-200 border-[1.5px] ${statusColor} caret-green-600`}
+                  className={`relative z-10 w-[48px] h-[56px] text-center text-[24px] font-semibold rounded-xl outline-none transition-all duration-200 border-[1.5px] ${statusColor} caret-gray-800`}
                 />
               );
             })}
@@ -216,7 +216,7 @@ const OtpVerification: React.FC<OtpVerificationProps> = ({
           <button
             type="submit"
             disabled={!isOtpComplete || loading || success}
-            className="mb-6 w-full rounded-xl bg-green-600 py-3.5 text-[15px] font-bold text-white shadow-sm transition-all hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400 disabled:shadow-none active:scale-[0.98]"
+            className="mb-6 w-full rounded-xl bg-black py-3.5 text-[15px] font-semibold text-white transition-all hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400 active:scale-[0.98]"
           >
             {loading ? "Verifying…" : "Verify"}
           </button>
@@ -230,7 +230,7 @@ const OtpVerification: React.FC<OtpVerificationProps> = ({
                 Verifying...
               </div>
             ) : success ? (
-              <div className="flex items-center gap-1.5 text-sm font-bold text-green-600">
+              <div className="flex items-center gap-1.5 text-sm font-semibold text-gray-700">
                 <CheckCircle2 className="w-4 h-4" />
                 Verified Successfully
               </div>
@@ -239,10 +239,10 @@ const OtpVerification: React.FC<OtpVerificationProps> = ({
                 type="button"
                 onClick={handleResend}
                 disabled={resendCooldown > 0 || loading}
-                className={`text-[14px] font-semibold transition-colors ${
+                className={`rounded-full border border-gray-300 bg-gray-100 px-5 py-2.5 text-[14px] font-semibold transition-colors ${
                   resendCooldown > 0
-                    ? "text-gray-400 cursor-not-allowed"
-                    : "text-green-700 hover:text-green-800"
+                    ? "cursor-not-allowed text-gray-400"
+                    : "text-gray-700 hover:bg-gray-200"
                 }`}
               >
                 {resendCooldown > 0

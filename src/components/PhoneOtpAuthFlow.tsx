@@ -218,7 +218,7 @@ export const PhoneOtpAuthFlow: React.FC<PhoneOtpAuthFlowProps> = ({
                                 <div className="pulse-animation mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-800 text-2xl font-bold text-white">
                                     N
                                 </div>
-                                <h2 className="mb-2 text-[26px] font-bold tracking-tight text-gray-900">Welcome</h2>
+                                <h2 className="mb-2 text-[26px] font-bold tracking-tight text-gray-900">Continue with phone</h2>
                                 <p className="text-sm text-gray-500">Enter your phone number to continue</p>
                             </div>
                         ) : null}
@@ -231,8 +231,8 @@ export const PhoneOtpAuthFlow: React.FC<PhoneOtpAuthFlowProps> = ({
                                     animate={shakeInput ? shakeAnimation : {}}
                                     className={
                                         isSheet
-                                            ? `relative flex h-14 min-h-[52px] items-center overflow-hidden rounded-xl border-[1.5px] bg-white transition-all duration-200 focus-within:ring-4 focus-within:ring-green-500/20 ${
-                                                  error ? "border-red-500" : "border-gray-200 focus-within:border-green-600"
+                                            ? `relative flex h-14 min-h-[52px] items-center overflow-hidden rounded-xl border-[1.5px] bg-white transition-all duration-200 focus-within:ring-2 focus-within:ring-gray-300/80 ${
+                                                  error ? "border-red-500" : "border-gray-300 focus-within:border-gray-500"
                                               }`
                                             : `relative flex min-h-[52px] w-full items-center overflow-hidden rounded-full border border-gray-300/95 bg-neutral-50 transition-all duration-200 focus-within:border-gray-400 focus-within:bg-white focus-within:shadow-[0_0_0_3px_rgba(0,0,0,0.05)] ${
                                                   error ? "border-red-500" : ""
@@ -258,7 +258,7 @@ export const PhoneOtpAuthFlow: React.FC<PhoneOtpAuthFlowProps> = ({
                                         onChange={handlePhoneChange}
                                         onPaste={handlePaste}
                                         onKeyDown={handleKeyPress}
-                                        className={`min-h-0 min-w-0 flex-1 bg-transparent py-3 text-[18px] font-semibold tracking-wide text-gray-900 caret-green-600 outline-none ${
+                                        className={`min-h-0 min-w-0 flex-1 bg-transparent py-3 text-[18px] font-semibold tracking-wide text-gray-900 caret-gray-800 outline-none ${
                                             isSheet
                                                 ? "pl-4 pr-3 placeholder-transparent focus:placeholder-gray-300"
                                                 : "pl-3 pr-4 placeholder:text-[17px] placeholder:font-medium placeholder:text-gray-400"
@@ -281,7 +281,7 @@ export const PhoneOtpAuthFlow: React.FC<PhoneOtpAuthFlowProps> = ({
                                     type="button"
                                     onClick={handleSendOtp}
                                     disabled={loading || phone.length !== 10}
-                                    className={`flex w-full items-center justify-center px-4 py-3.5 text-[15px] font-bold shadow-sm transition-all duration-300 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400 not-disabled:bg-green-600 not-disabled:text-white not-disabled:hover:bg-green-700 not-disabled:hover:shadow-md not-disabled:active:scale-[0.98] ${
+                                    className={`flex w-full items-center justify-center px-4 py-3.5 text-[15px] font-semibold transition-all duration-300 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400 not-disabled:bg-black not-disabled:text-white not-disabled:hover:bg-[#1a1a1a] not-disabled:active:scale-[0.98] ${
                                         isSheet ? "rounded-xl" : "rounded-full"
                                     }`}
                                 >

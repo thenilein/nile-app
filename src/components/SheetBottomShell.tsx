@@ -1,6 +1,7 @@
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
+import { sheetLayoutTransition } from "../lib/sheetMotion.ts";
 
 export const sheetBottomSlideVariants = {
     hidden: { y: "100%" },
@@ -63,7 +64,9 @@ export const SheetBottomShell: React.FC<SheetBottomShellProps> = ({
                         initial="hidden"
                         animate="visible"
                         exit="exit"
-                        className={`relative z-10 flex max-h-[min(92dvh,820px)] w-full flex-col overflow-hidden rounded-t-[28px] border-t border-[#E5E7EB] bg-white shadow-xl ${panelClassName}`}
+                        layout
+                        transition={{ layout: sheetLayoutTransition.layout }}
+                        className={`relative z-10 flex max-h-[min(92dvh,820px)] min-h-0 w-full flex-col overflow-hidden rounded-t-[28px] border-t border-[#E5E7EB] bg-white shadow-xl ${panelClassName}`}
                         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
                     >
                         <div className="flex flex-shrink-0 justify-center pb-1 pt-3">
@@ -97,7 +100,7 @@ export const SheetBottomShell: React.FC<SheetBottomShellProps> = ({
                             className={
                                 bodyClassName ||
                                 (header === "close-floating"
-                                    ? "relative flex max-h-[min(calc(92dvh-48px),780px)] min-h-0 flex-col overflow-hidden overflow-y-auto px-6 pb-8 pt-2"
+                                    ? "relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-6 pb-8 pt-2"
                                     : "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 pb-2")
                             }
                         >

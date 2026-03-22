@@ -60,7 +60,7 @@ const ProfileCompletionForm: React.FC<ProfileCompletionFormProps> = ({
       <button
         type="submit"
         disabled={loading || !fullName.trim()}
-        className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-green-800 hover:bg-green-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="w-full flex justify-center rounded-xl bg-black py-3.5 px-4 text-[15px] font-semibold text-white transition-colors hover:bg-[#1a1a1a] focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
       >
         {loading ? 'Saving...' : submitLabel}
       </button>

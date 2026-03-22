@@ -2,6 +2,11 @@ import type { Variants } from "framer-motion";
 
 export const sheetEaseSmooth = [0.22, 1, 0.36, 1] as const;
 
+/** Height / width changes when sheet content switches (auth ↔ location, cart ↔ checkout). */
+export const sheetLayoutTransition = {
+    layout: { duration: 0.38, ease: sheetEaseSmooth },
+};
+
 export const sheetHorizontalSlideVariants: Variants = {
     enter: (dir: number) => ({
         x: dir > 0 ? "100%" : "-100%",

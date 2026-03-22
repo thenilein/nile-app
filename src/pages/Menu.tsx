@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, MapPin, ShoppingBag, Store, Truck, User, X } from "lucide-react";
+import { ChevronDown, MapPin, Store, Truck, User, X } from "lucide-react";
 import { motion } from "framer-motion";
 import { supabase } from "../lib/supabase.ts";
 import { useLocation } from "../context/LocationContext.tsx";
@@ -794,11 +794,10 @@ const Menu: React.FC = () => {
                     <button
                         type="button"
                         onClick={() => setMobileCartDrawerOpen(true)}
-                        className="flex shrink-0 items-center gap-1.5 pl-2 pr-3 text-[#111827] transition-colors active:bg-gray-50"
-                        aria-label={`Open cart, ${totalItems} items`}
+                        className="flex shrink-0 items-center px-3 text-[13px] font-semibold text-[#111827] transition-colors active:bg-gray-50"
+                        aria-label={totalItems > 0 ? `Open cart, ${totalItems} items` : "Open cart"}
                     >
-                        <ShoppingBag className="h-5 w-5 shrink-0 text-[#374151]" />
-                        <span className="text-[14px] font-bold tabular-nums">{totalItems}</span>
+                        Cart
                     </button>
                 </div>
             )}

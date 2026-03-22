@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { sheetLayoutTransition } from "../lib/sheetMotion.ts";
 import { LocationPickerContent } from "./LocationPickerContent.tsx";
 import { SheetToast, useSheetToast } from "./SheetToast.tsx";
 import { SheetLoginStep } from "./SheetLoginStep.tsx";
@@ -64,7 +65,7 @@ export const LocationPickerSheet: React.FC<LocationPickerSheetProps> = ({
     navigateToMenuOnSelect = false,
     authGate = false,
     authOnly = false,
-    authTitle = "Continue with phone number",
+    authTitle = "Continue with phone",
     authSubtitle = "",
 }) => {
     const effectiveAuthGate = Boolean(authGate || authOnly);
@@ -204,19 +205,8 @@ export const LocationPickerSheet: React.FC<LocationPickerSheetProps> = ({
           ? authSubtitle
           : subtitle;
 
-    /** Auth steps size to content; location step keeps a comfortable min height for lists. */
-    const useCompactAuthSheet = Boolean(
-        authOnly || (effectiveAuthGate && (gateLoading || phase === "auth")),
-    );
-
     const renderAuthGateBody = () => (
-        <div
-            className={
-                useCompactAuthSheet
-                    ? "relative max-h-[min(88vh,820px)] overflow-x-hidden overflow-y-auto"
-                    : "relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
-            }
-        >
+        <div className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
             {gateLoading ? (
                 <div className="px-5 pb-5 pt-1 md:px-6 md:pb-6">
                     <SheetLoginStep
@@ -305,10 +295,10 @@ export const LocationPickerSheet: React.FC<LocationPickerSheetProps> = ({
 
             <div className="pointer-events-none fixed inset-0 z-[130] hidden md:block">
                 <div className="pointer-events-auto absolute inset-0 flex items-center justify-center px-6 py-8">
-                    <div
-                        className={`flex w-full max-w-[640px] flex-col overflow-hidden rounded-[22px] border border-[#E5E7EB] bg-white shadow-[0_24px_60px_rgba(0,0,0,0.25)] max-h-[min(92vh,880px)] ${
-                            useCompactAuthSheet ? "min-h-0" : "min-h-[min(58vh,560px)]"
-                        }`}
+                    <motion.div
+                        layout
+                        transition={sheetLayoutTransition}
+                        className="flex max-h-[min(92dvh,880px)] min-h-0 w-full max-w-[640px] flex-col overflow-hidden rounded-[22px] border border-[#E5E7EB] bg-white shadow-[0_24px_60px_rgba(0,0,0,0.25)]"
                     >
                         {effectiveAuthGate ? (
                             <div className="flex shrink-0 flex-col border-b border-[#E5E7EB] px-6 pb-5 pt-3">
@@ -366,15 +356,15 @@ export const LocationPickerSheet: React.FC<LocationPickerSheetProps> = ({
                             </div>
                         )}
                         {desktopFooter}
-                    </div>
+                    </motion.div>
                 </div>
             </div>
 
-            <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[130] flex justify-center px-3 pb-[max(10px,calc(env(safe-area-inset-bottom)+10px))] md:hidden">
-                <div
-                    className={`pointer-events-auto flex w-full max-w-lg flex-col overflow-hidden rounded-[40px] border border-black/[0.08] bg-white shadow-[0_12px_48px_rgba(15,23,42,0.14)] box-border max-h-[min(90dvh,880px)] ${
-                        useCompactAuthSheet ? "min-h-0" : "min-h-[58vh]"
-                    }`}
+            <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[130] flex items-end justify-center px-3 pb-[max(10px,calc(env(safe-area-inset-bottom)+10px))] md:hidden">
+                <motion.div
+                    layout
+                    transition={sheetLayoutTransition}
+                    className="pointer-events-auto box-border flex max-h-[min(90dvh,880px)] min-h-0 w-full max-w-lg flex-col overflow-hidden rounded-[40px] border border-black/[0.08] bg-white shadow-[0_12px_48px_rgba(15,23,42,0.14)]"
                     style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}
                 >
                     <div className="flex-shrink-0 px-5 pb-3 pt-3">
@@ -435,7 +425,7 @@ export const LocationPickerSheet: React.FC<LocationPickerSheetProps> = ({
                         </div>
                     )}
                     {mobileFooter}
-                </div>
+                </motion.div>
             </div>
         </>
     );

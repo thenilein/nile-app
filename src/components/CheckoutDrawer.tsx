@@ -29,7 +29,7 @@ import { findMatchingSavedAddress } from '../lib/addressCoordMatch.ts';
 import { resolveGpsCoordsToLocationData } from '../lib/resolveGpsToLocationData.ts';
 import { SheetLoginStep } from './SheetLoginStep.tsx';
 import { SheetToast, useSheetToast } from './SheetToast.tsx';
-import { sheetCapsuleIconBtn } from '../lib/sheetCapsuleStyles.ts';
+import { sheetCapsuleCtaBtn, sheetCapsuleIconBtn } from '../lib/sheetCapsuleStyles.ts';
 
 type AddressType = 'home' | 'work' | 'other';
 
@@ -69,7 +69,8 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
     const { locationData, nearestOutlet, setLocationData } = useLocation();
     const navigate = useNavigate();
 
-    const [step, setStep] = useState<CheckoutStep>(1);
+    /** Default 0 (sign-in first); layout effect promotes signed-in users to 1 before paint. */
+    const [step, setStep] = useState<CheckoutStep>(0);
     /** 1 = forward (next), -1 = back — drives slide direction for step panels + title */
     const [slideDir, setSlideDir] = useState(1);
     const checkoutBootstrapped = useRef(false);
@@ -471,6 +472,18 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
 
     if (!visible) return null;
 
+    if (authLoading) {
+        return (
+            <>
+                <SheetToast msg={toastMsg} zClassName="z-[200]" />
+                <div className="flex min-h-0 flex-1 flex-col items-center justify-center bg-white px-6 py-16">
+                    <Loader2 className="h-10 w-10 shrink-0 animate-spin text-gray-400" aria-hidden />
+                    <p className="mt-3 text-sm font-medium text-gray-500">Checking your session…</p>
+                </div>
+            </>
+        );
+    }
+
     return (
         <>
             <SheetToast msg={toastMsg} zClassName="z-[200]" />
@@ -508,16 +521,18 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
                                 exit="exit"
                                 className="mt-1 text-lg font-bold tracking-tight text-gray-900"
                             >
-                                {step === 0 ? 'Sign in' : step === 1 ? 'Confirm address' : 'Payment'}
+                                {step === 0 ? 'Continue with phone' : step === 1 ? 'Confirm address' : 'Payment'}
                             </motion.h2>
                         </AnimatePresence>
-                        <motion.span
-                            layout
-                            transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                            className="mt-2 inline-block rounded-full border border-green-200 bg-green-50 px-3 py-1 text-xs font-bold text-green-800"
-                        >
-                            {totalItems} items · ₹{grandTotal}
-                        </motion.span>
+                        {step > 0 && (
+                            <motion.span
+                                layout
+                                transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                                className="mt-2 inline-block rounded-full border border-green-200 bg-green-50 px-3 py-1 text-xs font-bold text-green-800"
+                            >
+                                {totalItems} items · ₹{grandTotal}
+                            </motion.span>
+                        )}
                     </div>
                 )}
 
@@ -882,11 +897,10 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
                                                 type="button"
                                                 onClick={handleContinueToPayment}
                                                 whileTap={{ scale: 0.98 }}
-                                                whileHover={{ scale: 1.01 }}
                                                 transition={{ type: 'spring', stiffness: 480, damping: 28 }}
-                                                className="h-[56px] w-full rounded-xl bg-green-600 text-[16px] font-bold text-white shadow-lg shadow-green-600/20 transition-colors hover:bg-green-700 md:h-[50px] md:text-[15px]"
+                                                className={sheetCapsuleCtaBtn}
                                             >
-                                                Continue to payment →
+                                                Continue
                                             </motion.button>
                                         </div>
                                     </motion.div>
@@ -906,10 +920,6 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
                                     >
                                         <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-4 space-y-2">
                                             <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Order summary</p>
-                                            <div className="flex justify-between text-[13px]">
-                                                <span className="text-gray-500">Subtotal</span>
-                                                <span className="font-medium text-gray-900">₹{Math.round(totalPrice)}</span>
-                                            </div>
                                             <div className="flex justify-between text-[13px]">
                                                 <span className="text-gray-500">GST (5%)</span>
                                                 <span className="font-medium text-gray-900">₹{gst}</span>
@@ -986,7 +996,7 @@ export function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onB
                                                 whileTap={!paymentMethod || isSubmitting ? undefined : { scale: 0.98 }}
                                                 whileHover={!paymentMethod || isSubmitting ? undefined : { scale: 1.01 }}
                                                 transition={{ type: 'spring', stiffness: 480, damping: 28 }}
-                                                className={`flex h-[56px] w-full items-center justify-center gap-2 rounded-xl text-[16px] font-bold shadow-lg md:h-[50px] md:text-[15px] ${!paymentMethod ? 'cursor-not-allowed bg-gray-200 text-gray-400 shadow-none' : 'bg-green-600 text-white shadow-green-600/20 transition-colors hover:bg-green-700'}`}
+                                                className={`flex h-[56px] w-full items-center justify-center gap-2 rounded-xl text-[16px] font-semibold md:h-[50px] md:text-[15px] ${!paymentMethod ? 'cursor-not-allowed bg-gray-200 text-gray-400' : 'bg-[#111827] text-white transition-colors hover:bg-[#1f2937]'}`}
                                             >
                                                 {isSubmitting ? (
                                                     <>

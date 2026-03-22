@@ -22,7 +22,6 @@ export const AccountSheet: React.FC<AccountSheetProps> = ({ isOpen, onClose }) =
                 onClose={onClose}
                 authGate
                 authOnly
-                authTitle="Log in"
                 authSubtitle="Use your phone number to continue"
             />
 
