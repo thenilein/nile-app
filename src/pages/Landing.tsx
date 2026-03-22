@@ -103,7 +103,7 @@ const FeaturesSection = () => {
     );
 };
 
-export const Landing = () => {
+const Landing = () => {
     return (
         <main className="flex-1 flex flex-col">
             <div className="flex-1 flex flex-col justify-center">

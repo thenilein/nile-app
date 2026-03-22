@@ -63,7 +63,7 @@ async function fetchSuggestions(query: string): Promise<Suggestion[]> {
     return results;
 }
 
-export const LocationSearch: React.FC = () => {
+const LocationSearch: React.FC = () => {
     const { setLocationData, clearLocation } = useLocation();
 
     const [query, setQuery] = useState("");

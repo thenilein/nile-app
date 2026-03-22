@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useState, useEffect } fr
 import { supabase } from "../lib/supabase.ts";
 import { useAuth } from "./AuthContext.tsx";
 
-export interface Outlet {
+interface Outlet {
     id: string;
     name: string;
     latitude: number;

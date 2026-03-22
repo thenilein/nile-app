@@ -15,12 +15,46 @@ import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { useLocation } from '../context/LocationContext';
 
+<<<<<<< Updated upstream
 const OTP_LENGTH = 6;
 const RESEND_COOLDOWN = 30;
 
 interface CheckoutDrawerProps {
     isOpen: boolean;
     onClose: () => void;
+=======
+const CheckoutDeliveryMap = lazy(() =>
+    import('./CheckoutDeliveryMap.tsx').then((m) => ({ default: m.CheckoutDeliveryMap })),
+);
+import { mapboxReverseGeocode, mergeFormattedAddress } from '../lib/mapboxGeocoding.ts';
+import { findMatchingSavedAddress } from '../lib/addressCoordMatch.ts';
+import { resolveGpsCoordsToLocationData } from '../lib/resolveGpsToLocationData.ts';
+import {
+    fetchUserSavedAddresses,
+    isSavedAddressType,
+    savedAddressToLocation,
+    savedAddressTypeLabel,
+    type SavedAddressRow,
+} from '../lib/savedAddresses.ts';
+import { computeOrderPricing } from '../lib/pricing.ts';
+import { SheetLoginStep } from './SheetLoginStep.tsx';
+import { SheetToast, useSheetToast } from './SheetToast.tsx';
+import { sheetCapsuleIconBtn } from '../lib/sheetCapsuleStyles.ts';
+import { sheetHorizontalSlideVariants, sheetTitleSlideVariants } from '../lib/sheetMotion.ts';
+
+type AddressType = 'home' | 'work' | 'other';
+
+function normalizeIndiaPhone(raw: string): string {
+    return raw.replace(/\D/g, '').slice(-10);
+}
+
+function isValidIndiaMobile(digits: string): boolean {
+    return /^[6-9]\d{9}$/.test(digits);
+}
+
+interface CheckoutFlowContentProps {
+    visible: boolean;
+>>>>>>> Stashed changes
     orderType?: DeliveryType;
     onOrderTypeChange?: (t: DeliveryType) => void;
 }
@@ -29,6 +63,7 @@ type DeliveryType = 'delivery' | 'pickup';
 type PaymentMethod = 'cash' | 'upi' | 'card' | 'wallet';
 type OtpStep = 'idle' | 'sent' | 'profile' | 'verified';
 
+<<<<<<< Updated upstream
 const FREE_DELIVERY_THRESHOLD = 300;
 const DELIVERY_FEE = 30;
 
@@ -50,6 +85,9 @@ const Toast: React.FC<{ msg: { type: 'error' | 'success'; text: string } | null 
 );
 
 const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose, orderType, onOrderTypeChange }) => {
+=======
+function CheckoutFlowContent({ visible, orderType, onOrderTypeChange, onBackToCart, onDismiss }: CheckoutFlowContentProps) {
+>>>>>>> Stashed changes
     const { totalItems, totalPrice, items, clearCart } = useCart();
     const { user } = useAuth();
     const { locationData, nearestOutlet, setLocationData, getCurrentLocation } = useLocation();
@@ -124,7 +162,68 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose, orderT
 
     // Reset on close
     useEffect(() => {
+<<<<<<< Updated upstream
         if (!isOpen) {
+=======
+        if (!visible || !user?.id || step !== 0) return;
+        transitionTo(1, 1);
+    }, [visible, user?.id, step, transitionTo]);
+
+    /** Pin matches an existing saved row (within ~45m) — no need to save again. */
+    const matchingSavedForPin = useMemo(() => {
+        if (!locationData || savedAddresses.length === 0) return undefined;
+        return findMatchingSavedAddress(savedAddresses, locationData.latitude, locationData.longitude);
+    }, [locationData, savedAddresses]);
+
+    const deliveryCompactSaved = Boolean(
+        user?.id &&
+            !loadingSavedAddresses &&
+            matchingSavedForPin &&
+            !deliveryFormExpanded
+    );
+
+    // Initialise map anchor when opening address step (delivery)
+    useEffect(() => {
+        if (!visible || step !== 1 || deliveryType !== 'delivery') return;
+        if (mapBootstrap !== null) return;
+        if (locationData) {
+            setMapBootstrap({ lat: locationData.latitude, lng: locationData.longitude });
+        } else {
+            setMapBootstrap({ ...DEFAULT_CHECKOUT_MAP_CENTER });
+        }
+    }, [visible, step, deliveryType, locationData, mapBootstrap]);
+
+    // Load saved addresses for signed-in user
+    useEffect(() => {
+        if (!visible || step !== 1 || !user?.id) {
+            setSavedAddresses([]);
+            return;
+        }
+        let cancelled = false;
+        (async () => {
+            setLoadingSavedAddresses(true);
+            const data = await fetchUserSavedAddresses(user.id);
+            if (!cancelled) setSavedAddresses(data);
+            if (!cancelled) setLoadingSavedAddresses(false);
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [visible, step, user?.id]);
+
+    // Prefill delivery phone from profile once per open
+    useEffect(() => {
+        if (!visible || step !== 1 || deliveryType !== 'delivery') return;
+        const fromUser =
+            (user?.user_metadata?.phone as string | undefined) || (user?.phone as string | undefined) || '';
+        if (!fromUser) return;
+        setDeliveryPhone((prev) => (prev.trim() ? prev : normalizeIndiaPhone(fromUser)));
+    }, [visible, step, deliveryType, user?.id]);
+
+    // Reset when checkout sheet hides
+    useEffect(() => {
+        if (!visible) {
+>>>>>>> Stashed changes
             setTimeout(() => {
                 setStep(1);
                 setPaymentMethod(null);
@@ -145,7 +244,26 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose, orderT
         }
     }, [isOpen]);
 
+<<<<<<< Updated upstream
     // Resend countdown
+=======
+    const applySavedAddress = useCallback((row: SavedAddressRow) => {
+        const location = savedAddressToLocation(row);
+        if (!location) return;
+        const { latitude: lat, longitude: lng } = location;
+        setLocationData(location);
+        if (row.recipient_name) setRecipientName(row.recipient_name);
+        if (row.phone) setDeliveryPhone(normalizeIndiaPhone(row.phone));
+        if (isSavedAddressType(row.address_type)) {
+            setAddressType(row.address_type);
+        }
+        if (row.street) setStreetName(row.street);
+        setHouseNo(row.locality || '');
+        setFlyToTarget({ lat, lng });
+    }, [setLocationData]);
+
+    // Keep order fields in sync when using compact saved-address checkout
+>>>>>>> Stashed changes
     useEffect(() => {
         if (resendCooldown <= 0) return;
         const t = setInterval(() => setResendCooldown(c => (c <= 1 ? 0 : c - 1)), 1000);
@@ -171,7 +289,87 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose, orderT
         setIsChangingLocation(false); setLocSearchQuery(''); setLocResults([]);
     };
 
+<<<<<<< Updated upstream
     // Confetti on step 3
+=======
+    const saveAddressToAccount = async () => {
+        if (!user?.id) {
+            showToast("error", "Sign in to save addresses");
+            return;
+        }
+        if (!locationData) {
+            showToast("error", "Set a location on the map first");
+            return;
+        }
+        const phoneDigits = normalizeIndiaPhone(deliveryPhone);
+        if (!recipientName.trim()) {
+            showToast("error", "Enter the recipient name");
+            return;
+        }
+        if (!isValidIndiaMobile(phoneDigits)) {
+            showToast("error", "Enter a valid 10-digit mobile number");
+            return;
+        }
+        if (!streetName.trim()) {
+            showToast("error", "Enter street / road name");
+            return;
+        }
+        const duplicate = findMatchingSavedAddress(
+            savedAddresses,
+            locationData.latitude,
+            locationData.longitude
+        );
+        if (duplicate) {
+            showToast("success", "This location is already in your saved addresses");
+            return;
+        }
+        setSavingAddress(true);
+        try {
+            const coordFallback = `${locationData.latitude.toFixed(5)}, ${locationData.longitude.toFixed(5)}`;
+            const geo = await mapboxReverseGeocode(locationData.latitude, locationData.longitude);
+            const { formattedAddress, city: geoCity, state: geoState } = mergeFormattedAddress({
+                houseNo: houseNo,
+                street: streetName,
+                geocode: geo,
+                coordFallback,
+            });
+            const cityOut = geoCity || locationData.city || null;
+            const stateOut = geoState || locationData.state || null;
+
+            const { error } = await supabase.from("addresses").insert({
+                user_id: user.id,
+                profile_id: user.id,
+                latitude: locationData.latitude,
+                longitude: locationData.longitude,
+                formatted_address: formattedAddress,
+                recipient_name: recipientName.trim(),
+                phone: phoneDigits,
+                address_type: addressType,
+                street: streetName.trim(),
+                locality: houseNo.trim() || null,
+                city: cityOut,
+                state: stateOut,
+                district: geoCity || locationData.city || null,
+            });
+            if (error) throw error;
+            setLocationData({
+                latitude: locationData.latitude,
+                longitude: locationData.longitude,
+                city: geoCity || locationData.city || "",
+                state: geoState || locationData.state || "",
+                displayName: formattedAddress,
+            });
+            showToast("success", "Address saved");
+            setSavedAddresses(await fetchUserSavedAddresses(user.id));
+        } catch {
+            showToast("error", "Could not save address");
+        } finally {
+            setSavingAddress(false);
+        }
+    };
+
+    // Confetti on confirmation
+>>>>>>> Stashed changes
     useEffect(() => {
         if (step === 3) {
             const end = Date.now() + 1500;
@@ -355,12 +553,29 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose, orderT
         }
     };
 
+<<<<<<< Updated upstream
     const gst = Math.round(totalPrice * 0.05);
     const delFee = deliveryType === 'delivery' ? (totalPrice >= FREE_DELIVERY_THRESHOLD ? 0 : DELIVERY_FEE) : 0;
     const grandTotal = Math.round(totalPrice) + gst + delFee;
 
     const slideVariants = { enter: { x: '100%', opacity: 0 }, center: { x: 0, opacity: 1 }, exit: { x: '-100%', opacity: 0 } };
     const shakeAnim = { x: [0, -8, 8, -8, 8, 0], transition: { duration: 0.4 } };
+=======
+    const pricing = computeOrderPricing(totalPrice, deliveryType, couponDiscount, Boolean(couponCode));
+    const { subtotal, gst, deliveryFee: delFee, discountAmt, grandTotal } = pricing;
+
+    const handleHeaderBack = useCallback(() => {
+        if (step === 2) {
+            transitionTo(1, -1);
+            return;
+        }
+        setStep1Error('');
+        localStorage.removeItem('pendingCheckout');
+        onBackToCart();
+    }, [step, transitionTo, onBackToCart]);
+
+    if (!visible) return null;
+>>>>>>> Stashed changes
 
     return (
         <AnimatePresence>
@@ -368,12 +583,60 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose, orderT
                 <>
                     <Toast msg={toastMsg} />
 
+<<<<<<< Updated upstream
                     {/* Backdrop */}
                     <motion.div
                         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                         onClick={() => step !== 3 && onClose()}
                         className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-[4px]"
                     />
+=======
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
+                {step !== 3 && (
+                    <div className="flex-shrink-0 border-b border-gray-100 px-4 pb-3 pt-3">
+                        <div className="flex items-center justify-between gap-2">
+                            <motion.button
+                                type="button"
+                                onClick={handleHeaderBack}
+                                whileTap={{ scale: 0.96 }}
+                                transition={{ type: 'spring', stiffness: 520, damping: 32 }}
+                                className={`${sheetCapsuleIconBtn} min-h-[44px] min-w-[44px] md:min-h-9 md:w-9 md:min-w-9`}
+                                aria-label={step === 2 ? 'Back to address' : 'Back to cart'}
+                            >
+                                <ChevronLeft className="h-[18px] w-[18px] shrink-0" strokeWidth={2.25} />
+                            </motion.button>
+                            <button
+                                type="button"
+                                onClick={onDismiss}
+                                className="rounded-full p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+                                aria-label="Close"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+                        <AnimatePresence mode="wait" custom={slideDir}>
+                            <motion.h2
+                                key={step}
+                                custom={slideDir}
+                                variants={sheetTitleSlideVariants}
+                                initial="initial"
+                                animate="animate"
+                                exit="exit"
+                                className="mt-1 text-lg font-bold tracking-tight text-gray-900"
+                            >
+                                {step === 0 ? 'Sign in' : step === 1 ? 'Confirm address' : 'Payment'}
+                            </motion.h2>
+                        </AnimatePresence>
+                        <motion.span
+                            layout
+                            transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                            className="mt-2 inline-block rounded-full border border-green-200 bg-green-50 px-3 py-1 text-xs font-bold text-green-800"
+                        >
+                            {totalItems} items · ₹{grandTotal}
+                        </motion.span>
+                    </div>
+                )}
+>>>>>>> Stashed changes
 
                     {/* Bottom Sheet */}
                     <motion.div
@@ -396,6 +659,7 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose, orderT
                             </div>
                         )}
 
+<<<<<<< Updated upstream
                         {/* Header */}
                         {step !== 3 && (
                             <div className="px-5 pb-3 pt-2 md:pt-0 flex-shrink-0 bg-[#16a34a] md:bg-white text-white md:text-gray-900">
@@ -413,6 +677,28 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose, orderT
                                 <div className="hidden md:block h-px bg-green-100 w-full" />
                             </div>
                         )}
+=======
+                                {/* ── STEP 0: Sign in (before address) ── */}
+                                {step === 0 && (
+                                    <motion.div
+                                        key="step0signin"
+                                        custom={slideDir}
+                                        variants={sheetHorizontalSlideVariants}
+                                        initial="enter"
+                                        animate="center"
+                                        exit="exit"
+                                        className="flex flex-col gap-5 px-5 pb-6 pt-2"
+                                    >
+                                        <SheetLoginStep
+                                            active={visible && step === 0}
+                                            authLoading={authLoading}
+                                            showToast={showToast}
+                                            syncPendingCheckoutEvent={false}
+                                            onAuthenticated={() => transitionTo(1, 1)}
+                                        />
+                                    </motion.div>
+                                )}
+>>>>>>> Stashed changes
 
                         {/* Step Indicator */}
                         {step !== 3 && (
@@ -442,10 +728,19 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose, orderT
                                 {step === 1 && (
                                     <motion.div
                                         key="step1"
+<<<<<<< Updated upstream
                                         variants={slideVariants}
                                         initial="enter" animate="center" exit="exit"
                                         transition={{ duration: 0.3, ease: 'easeInOut' }}
                                         className="p-5 flex flex-col gap-5"
+=======
+                                        custom={slideDir}
+                                        variants={sheetHorizontalSlideVariants}
+                                        initial="enter"
+                                        animate="center"
+                                        exit="exit"
+                                        className="flex flex-col gap-5 px-5 pb-6 pt-2"
+>>>>>>> Stashed changes
                                     >
                                         {step1Error && (
                                             <div className="text-red-500 text-sm font-semibold bg-red-50 p-3 rounded-lg border border-red-200">
@@ -487,9 +782,277 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose, orderT
                                             {phoneError && <p className="mt-1 text-xs text-red-500 font-medium">{phoneError}</p>}
                                         </div>
 
+<<<<<<< Updated upstream
                                         {/* ── Inline OTP boxes (expand after Send OTP) ── */}
                                         <AnimatePresence>
                                             {otpStep === 'sent' && (
+=======
+                                        <AnimatePresence mode="wait">
+                                            {deliveryType === 'delivery' ? (
+                                                deliveryCompactSaved && matchingSavedForPin ? (
+                                                    <motion.div
+                                                        key="delivery-compact-saved"
+                                                        initial={{ opacity: 0, height: 0 }}
+                                                        animate={{ opacity: 1, height: 'auto' }}
+                                                        exit={{ opacity: 0, height: 0 }}
+                                                        transition={{ duration: 0.25 }}
+                                                        className="space-y-4 overflow-hidden"
+                                                    >
+                                                        <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+                                                            <div className="flex gap-3">
+                                                                <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-green-700" aria-hidden />
+                                                                <div className="min-w-0 flex-1">
+                                                                    <p className="text-[11px] font-bold uppercase tracking-wider text-green-800">
+                                                                        Delivering to saved address
+                                                                    </p>
+                                                                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                                                                        <span className="font-semibold text-gray-900">
+                                                                            {matchingSavedForPin.recipient_name || 'Saved address'}
+                                                                        </span>
+                                                                        {matchingSavedForPin.address_type &&
+                                                                            isSavedAddressType(matchingSavedForPin.address_type) && (
+                                                                                <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-green-800">
+                                                                                    {savedAddressTypeLabel(matchingSavedForPin.address_type)}
+                                                                                </span>
+                                                                            )}
+                                                                    </div>
+                                                                    <p className="mt-2 text-sm leading-snug text-gray-700">
+                                                                        {matchingSavedForPin.formatted_address ||
+                                                                            [matchingSavedForPin.locality, matchingSavedForPin.street, matchingSavedForPin.city]
+                                                                                .filter(Boolean)
+                                                                                .join(', ') ||
+                                                                            '—'}
+                                                                    </p>
+                                                                    {matchingSavedForPin.phone && (
+                                                                        <p className="mt-2 text-xs font-medium text-gray-600">
+                                                                            +91 {normalizeIndiaPhone(matchingSavedForPin.phone)}
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setDeliveryFormExpanded(true)}
+                                                            className="w-full rounded-xl border border-gray-200 bg-white py-3 text-sm font-bold text-green-700 transition-colors hover:bg-gray-50"
+                                                        >
+                                                            Change address
+                                                        </button>
+                                                        <div>
+                                                            <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">
+                                                                Instructions (optional)
+                                                            </label>
+                                                            <textarea
+                                                                value={instructions}
+                                                                onChange={(e) => setInstructions(e.target.value)}
+                                                                placeholder="E.g. Ring the bell, leave at door…"
+                                                                className="min-h-[80px] w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-[16px] focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500 md:min-h-[72px] md:text-sm"
+                                                            />
+                                                        </div>
+                                                    </motion.div>
+                                                ) : (
+                                                    <motion.div
+                                                        key="delivery-fields"
+                                                        initial={{ opacity: 0, height: 0 }}
+                                                        animate={{ opacity: 1, height: 'auto' }}
+                                                        exit={{ opacity: 0, height: 0 }}
+                                                        transition={{ duration: 0.25 }}
+                                                        className="space-y-4 overflow-hidden"
+                                                    >
+                                                        {mapBootstrap && (
+                                                            <Suspense
+                                                                fallback={
+                                                                    <div className="flex h-[260px] items-center justify-center rounded-xl bg-gray-100 text-sm text-gray-500">
+                                                                        <Loader2 className="h-6 w-6 animate-spin text-green-600" />
+                                                                    </div>
+                                                                }
+                                                            >
+                                                                <CheckoutDeliveryMap
+                                                                    centerLat={mapBootstrap.lat}
+                                                                    centerLng={mapBootstrap.lng}
+                                                                    onCenterChange={handleMapPositionChange}
+                                                                    flyTo={flyToTarget}
+                                                                    onFlyToComplete={() => setFlyToTarget(null)}
+                                                                    className="h-[260px]"
+                                                                />
+                                                            </Suspense>
+                                                        )}
+
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleUseMyLocation}
+                                                            disabled={checkoutGpsLoading}
+                                                            className="flex w-full items-center justify-center gap-2 rounded-xl bg-green-50 py-2.5 text-sm font-semibold text-green-700 transition-colors hover:bg-green-100 disabled:opacity-60"
+                                                        >
+                                                            {checkoutGpsLoading ? (
+                                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                            ) : (
+                                                                <Navigation className="h-4 w-4" />
+                                                            )}
+                                                            {checkoutGpsLoading ? 'Getting location…' : 'Use my current location'}
+                                                        </button>
+
+                                                        <div>
+                                                            <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">Recipient name</label>
+                                                            <input
+                                                                type="text"
+                                                                value={recipientName}
+                                                                onChange={(e) => setRecipientName(e.target.value)}
+                                                                placeholder="Full name"
+                                                                autoComplete="name"
+                                                                className="h-[52px] w-full rounded-xl border border-gray-200 bg-gray-50 px-4 text-[16px] transition-shadow focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500 md:h-[48px] md:text-sm"
+                                                            />
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">Phone number</label>
+                                                            <div className="flex overflow-hidden rounded-xl border border-gray-200 bg-gray-50 focus-within:border-green-500 focus-within:ring-1 focus-within:ring-green-500">
+                                                                <span className="flex shrink-0 items-center border-r border-gray-200 bg-gray-100 px-3 text-sm font-medium text-gray-600">
+                                                                    +91
+                                                                </span>
+                                                                <input
+                                                                    type="tel"
+                                                                    inputMode="numeric"
+                                                                    value={deliveryPhone}
+                                                                    onChange={(e) => setDeliveryPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                                                                    placeholder="9876543210"
+                                                                    autoComplete="tel"
+                                                                    className="min-w-0 flex-1 bg-transparent py-3 pl-3 pr-3 text-[16px] focus:outline-none md:text-sm"
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">Save as</label>
+                                                            <div className="flex gap-2 rounded-xl bg-gray-100 p-1">
+                                                                {(['home', 'work', 'other'] as const).map((t) => (
+                                                                    <button
+                                                                        key={t}
+                                                                        type="button"
+                                                                        onClick={() => setAddressType(t)}
+                                                                        className={`flex-1 rounded-lg py-2.5 text-sm font-bold transition-all ${
+                                                                            addressType === t
+                                                                                ? 'bg-green-600 text-white shadow-sm'
+                                                                                : 'text-gray-600 hover:text-gray-900'
+                                                                        }`}
+                                                                    >
+                                                                        {savedAddressTypeLabel(t)}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">Street / road name</label>
+                                                            <input
+                                                                type="text"
+                                                                value={streetName}
+                                                                onChange={(e) => setStreetName(e.target.value)}
+                                                                placeholder="e.g. Gandhi Road, Main Street"
+                                                                className="h-[52px] w-full rounded-xl border border-gray-200 bg-gray-50 px-4 text-[16px] transition-shadow focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500 md:h-[48px] md:text-sm"
+                                                            />
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">
+                                                                Flat / house / apartment (optional)
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                value={houseNo}
+                                                                onChange={(e) => setHouseNo(e.target.value)}
+                                                                placeholder="e.g. 12B, 2nd floor"
+                                                                className="h-[52px] w-full rounded-xl border border-gray-200 bg-gray-50 px-4 text-[16px] transition-shadow focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500 md:h-[48px] md:text-sm"
+                                                            />
+                                                        </div>
+
+                                                        {user?.id && (
+                                                            <div>
+                                                                <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">Saved addresses</label>
+                                                                {loadingSavedAddresses ? (
+                                                                    <div className="flex justify-center py-4">
+                                                                        <Loader2 className="h-6 w-6 animate-spin text-green-600" />
+                                                                    </div>
+                                                                ) : savedAddresses.length === 0 ? (
+                                                                    <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50/80 px-3 py-3 text-xs text-gray-500">
+                                                                        No saved addresses yet. Set the pin (search, recent, or GPS), fill the form, then tap Save
+                                                                        address.
+                                                                    </p>
+                                                                ) : (
+                                                                    <ul className="space-y-2">
+                                                                        {savedAddresses.map((row) => (
+                                                                            <li key={row.id}>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => applySavedAddress(row)}
+                                                                                    className="w-full rounded-xl border border-gray-200 bg-white p-3 text-left transition-colors hover:border-green-300 hover:bg-green-50/50"
+                                                                                >
+                                                                                    <div className="flex items-center justify-between gap-2">
+                                                                                        <span className="text-sm font-semibold text-gray-900">
+                                                                                            {row.recipient_name || 'Saved address'}
+                                                                                        </span>
+                                                                                        {row.address_type && (
+                                                                                            <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-green-800">
+                                                                                                {savedAddressTypeLabel(row.address_type, {
+                                                                                                    unknownLabel: row.address_type,
+                                                                                                })}
+                                                                                            </span>
+                                                                                        )}
+                                                                                    </div>
+                                                                                    <span className="mt-1 line-clamp-2 block text-sm text-gray-600">
+                                                                                        {row.formatted_address ||
+                                                                                            [row.locality, row.street, row.city].filter(Boolean).join(', ') ||
+                                                                                            '—'}
+                                                                                    </span>
+                                                                                    {row.phone && (
+                                                                                        <span className="mt-0.5 block text-xs text-gray-500">+91 {row.phone}</span>
+                                                                                    )}
+                                                                                </button>
+                                                                            </li>
+                                                                        ))}
+                                                                    </ul>
+                                                                )}
+                                                            </div>
+                                                        )}
+
+                                                        <div>
+                                                            <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500">Instructions (optional)</label>
+                                                            <textarea
+                                                                value={instructions}
+                                                                onChange={(e) => setInstructions(e.target.value)}
+                                                                placeholder="E.g. Ring the bell, leave at door…"
+                                                                className="min-h-[80px] w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-[16px] focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500 md:min-h-[72px] md:text-sm"
+                                                            />
+                                                        </div>
+
+                                                        {user?.id && matchingSavedForPin && !loadingSavedAddresses ? (
+                                                            <div className="flex items-start gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-900">
+                                                                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-600" aria-hidden />
+                                                                <p>
+                                                                    <span className="font-semibold">Already saved.</span>{' '}
+                                                                    This pin matches your saved address
+                                                                    {matchingSavedForPin.address_type &&
+                                                                    isSavedAddressType(matchingSavedForPin.address_type)
+                                                                        ? ` (${savedAddressTypeLabel(matchingSavedForPin.address_type)})`
+                                                                        : ''}
+                                                                    . You can still place the order without saving again.
+                                                                </p>
+                                                            </div>
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                onClick={saveAddressToAccount}
+                                                                disabled={savingAddress}
+                                                                className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-green-600 py-3 text-sm font-bold text-green-700 transition-colors hover:bg-green-50 disabled:opacity-60"
+                                                            >
+                                                                {savingAddress ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                                                                {savingAddress ? 'Saving…' : 'Save address'}
+                                                            </button>
+                                                        )}
+                                                    </motion.div>
+                                                )
+                                            ) : (
+>>>>>>> Stashed changes
                                                 <motion.div
                                                     initial={{ opacity: 0, height: 0 }}
                                                     animate={{ opacity: 1, height: 'auto' }}
@@ -740,12 +1303,57 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose, orderT
                                 {/* ── STEP 2: PAYMENT ── */}
                                 {step === 2 && (
                                     <motion.div
+<<<<<<< Updated upstream
                                         key="step2"
                                         variants={slideVariants}
                                         initial="enter" animate="center" exit="exit"
                                         transition={{ duration: 0.3, ease: 'easeInOut' }}
                                         className="p-5 flex flex-col gap-6"
                                     >
+=======
+                                        key="step2pay"
+                                        custom={slideDir}
+                                        variants={sheetHorizontalSlideVariants}
+                                        initial="enter"
+                                        animate="center"
+                                        exit="exit"
+                                        className="flex flex-col gap-6 px-5 pb-6 pt-2"
+                                    >
+                                        <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-4 space-y-2">
+                                            <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Order summary</p>
+                                            <div className="flex justify-between text-[13px]">
+                                                <span className="text-gray-500">Subtotal</span>
+                                                <span className="font-medium text-gray-900">₹{subtotal}</span>
+                                            </div>
+                                            <div className="flex justify-between text-[13px]">
+                                                <span className="text-gray-500">GST (5%)</span>
+                                                <span className="font-medium text-gray-900">₹{gst}</span>
+                                            </div>
+                                            <div className="flex justify-between text-[13px]">
+                                                <span className="text-gray-500">Delivery</span>
+                                                {deliveryType === 'pickup' ? (
+                                                    <span className="font-semibold text-blue-600">Pickup</span>
+                                                ) : delFee === 0 ? (
+                                                    <span className="font-bold text-green-600">Free</span>
+                                                ) : (
+                                                    <span className="font-medium text-gray-900">₹{delFee}</span>
+                                                )}
+                                            </div>
+                                            {couponCode && discountAmt > 0 && (
+                                                <div className="flex justify-between text-[13px] font-medium text-green-600">
+                                                    <span>Discount ({couponCode})</span>
+                                                    <span>−₹{discountAmt}</span>
+                                                </div>
+                                            )}
+                                            <div className="flex justify-between border-t border-gray-200 pt-2 text-sm font-bold">
+                                                <span className="text-gray-900">Total</span>
+                                                <span className="text-green-700">₹{grandTotal}</span>
+                                            </div>
+                                        </div>
+
+                                        <CouponSection onApply={handleApplyCoupon} applied={couponCode} />
+
+>>>>>>> Stashed changes
                                         <div className="grid grid-cols-2 gap-3">
                                             {([
                                                 { key: 'cash', label: 'Cash on Delivery', Icon: Banknote },
@@ -813,10 +1421,20 @@ const CheckoutDrawer: React.FC<CheckoutDrawerProps> = ({ isOpen, onClose, orderT
                                 {/* ── STEP 3: SUCCESS ── */}
                                 {step === 3 && (
                                     <motion.div
+<<<<<<< Updated upstream
                                         key="step3"
                                         initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
                                         transition={{ duration: 0.4, ease: 'easeOut' }}
                                         className="p-8 flex flex-col items-center justify-center h-full text-center pb-12"
+=======
+                                        key="step3ok"
+                                        custom={slideDir}
+                                        variants={sheetHorizontalSlideVariants}
+                                        initial="enter"
+                                        animate="center"
+                                        exit="exit"
+                                        className="flex h-full flex-col items-center justify-center px-8 pb-12 pt-6 text-center"
+>>>>>>> Stashed changes
                                     >
                                         <div className="mb-6 relative">
                                             <svg className="w-24 h-24 text-green-500" viewBox="0 0 100 100">

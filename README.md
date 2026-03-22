@@ -1,3 +1,3 @@
-1.) run npm install
-2.) run npm install @supabase/supabase-js
-3.) add supabase url & anon key
+1. Run `npm install`
+2. Add your Supabase URL and anon key to `.env`
+3. Run `npm run dev`

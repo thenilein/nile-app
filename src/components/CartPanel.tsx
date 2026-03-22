@@ -2,11 +2,17 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence, useAnimation, useMotionValue, useTransform, animate } from "framer-motion";
 import { ShoppingBag, X, ArrowRight, Tag, ChevronDown, ImageOff } from "lucide-react";
 import { useCart } from "../context/CartContext.tsx";
+<<<<<<< Updated upstream
 import { useNavigate } from "react-router-dom";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const DELIVERY_FEE = 30;
 const FREE_DELIVERY_THRESHOLD = 300;
+=======
+import { CheckoutSheetContent } from "./CheckoutDrawer.tsx";
+import { CouponSection } from "./CouponSection.tsx";
+import { computeOrderPricing, FREE_DELIVERY_THRESHOLD } from "../lib/pricing.ts";
+>>>>>>> Stashed changes
 
 const VALID_COUPONS: Record<string, number> = {
     NILE10: 10,
@@ -155,16 +161,16 @@ const CartItemRow: React.FC<CartItemRowProps> = React.memo(({ item, onInc, onDec
 // Free delivery progress bar
 const DeliveryProgress: React.FC<{ subtotal: number; orderType: string }> = ({ subtotal, orderType }) => {
     if (orderType !== "delivery") return null;
-    const pct = Math.min((subtotal / FREE_DELIVERY_THRESHOLD) * 100, 100);
-    const reached = subtotal >= FREE_DELIVERY_THRESHOLD;
+    const pricing = computeOrderPricing(subtotal, "delivery");
+    const pct = Math.min((pricing.subtotal / FREE_DELIVERY_THRESHOLD) * 100, 100);
 
     return (
         <div className="px-4 pb-3">
             <div className="flex justify-between items-center mb-1.5">
                 <p className="text-[11px] text-gray-500 font-medium">
-                    {reached
+                    {pricing.freeDeliveryUnlocked
                         ? <span className="text-green-600">Free delivery unlocked</span>
-                        : `Add ₹${(FREE_DELIVERY_THRESHOLD - subtotal).toFixed(0)} more for free delivery`}
+                        : `Add ₹${pricing.remainingForFreeDelivery.toFixed(0)} more for free delivery`}
                 </p>
             </div>
             {/* Bar */}
@@ -302,12 +308,8 @@ const CartPanelInner: React.FC<CartPanelProps & { mobile?: boolean; onClose?: ()
         }
     }, [totalItems, bagControls]);
 
-    const subtotal = Math.round(totalPrice);
-    const gst = Math.round(subtotal * 0.05);
-    const deliveryFee =
-        orderType === "delivery" ? (subtotal >= FREE_DELIVERY_THRESHOLD ? 0 : DELIVERY_FEE) : 0;
-    const discountAmt = Math.round(couponCode ? couponDiscount : 0);
-    const grandTotal = subtotal + gst + deliveryFee - discountAmt;
+    const pricing = computeOrderPricing(totalPrice, orderType, couponDiscount, Boolean(couponCode));
+    const { subtotal, gst, deliveryFee, discountAmt, grandTotal } = pricing;
 
     const handleApplyCoupon = (code: string, discount: number) => {
         if (!code) {
@@ -514,10 +516,7 @@ const MobileCartDrawer: React.FC<CartPanelProps> = ({ orderType, onCheckoutClick
         }
     }, [totalItems, badgeControls]);
 
-    const subtotal = Math.round(totalPrice);
-    const gst = Math.round(subtotal * 0.05);
-    const deliveryFee = orderType === "delivery" ? (subtotal >= FREE_DELIVERY_THRESHOLD ? 0 : DELIVERY_FEE) : 0;
-    const grandTotal = subtotal + gst + deliveryFee;
+    const { subtotal, gst, deliveryFee, grandTotal } = computeOrderPricing(totalPrice, orderType);
 
     const showPill = totalItems > 0 && !isCheckoutOpen;
 
@@ -610,7 +609,36 @@ const MobileCartDrawer: React.FC<CartPanelProps> = ({ orderType, onCheckoutClick
 };
 
 // ─── EXPORT ───────────────────────────────────────────────────────────────────
+<<<<<<< Updated upstream
 const CartPanel: React.FC<CartPanelProps> = ({ orderType, onCheckoutClick, isCheckoutOpen }) => {
+=======
+interface CartPanelOuterProps {
+    orderType: "delivery" | "pickup";
+    onOrderTypeChange?: (t: "delivery" | "pickup") => void;
+    checkoutLaunchKey?: number;
+    hideMobileFloatingBar?: boolean;
+    mobileCartDrawerOpen?: boolean;
+    onMobileCartDrawerOpenChange?: (open: boolean) => void;
+}
+
+const CartPanel: React.FC<CartPanelOuterProps> = (props) => {
+    const { checkoutLaunchKey, onMobileCartDrawerOpenChange } = props;
+    const [checkoutActive, setCheckoutActive] = useState(false);
+
+    useEffect(() => {
+        if ((checkoutLaunchKey ?? 0) > 0) {
+            setCheckoutActive(true);
+            onMobileCartDrawerOpenChange?.(true);
+        }
+    }, [checkoutLaunchKey, onMobileCartDrawerOpenChange]);
+
+    const innerProps: CartPanelProps = {
+        ...props,
+        checkoutActive,
+        setCheckoutActive,
+    };
+
+>>>>>>> Stashed changes
     return (
         <>
             {/* Desktop sidebar */}
