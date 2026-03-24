@@ -9,8 +9,8 @@ import {
   View,
   type ViewToken,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AccountSheet } from "../src/components/AccountSheet";
 import { CartSheet } from "../src/components/CartSheet";
 import { CategoryPickerSheet, type MenuGroup } from "../src/components/CategoryPickerSheet";
 import { LocationPickerModal } from "../src/components/LocationPickerModal";
@@ -82,7 +82,7 @@ export default function MenuScreen() {
   const [vegOnly, setVegOnly] = useState(false);
 
   const [locationOpen, setLocationOpen] = useState(false);
-  const [accountOpen, setAccountOpen] = useState(false);
+  const [profileLoginOpen, setProfileLoginOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
 
@@ -227,8 +227,6 @@ export default function MenuScreen() {
   const activeCategory = categories.find((c) => c.id === activeCategoryId) || null;
   const activeCategoryLabel = activeCategory?.name || menuGroups[0]?.categories[0]?.name || "Categories";
 
-  const storeName = nearestOutlet?.name || "Nile Cafe";
-  const storeMeta = locationData?.displayName || "Freshly made favourites near you";
 
   const { locationCityLine, locationAddressLine } = useMemo(() => {
     const stripRedundantCityFromAddress = (city: string, addr: string): string => {
@@ -279,18 +277,6 @@ export default function MenuScreen() {
     return { locationCityLine: cityLine, locationAddressLine: addressLine };
   }, [locationData, nearestOutlet]);
 
-  const hideStoreTitleRow = useMemo(() => {
-    if (locationCityLine === LOCATION_PLACEHOLDER) return false;
-    return storeName.trim().toLowerCase() === locationCityLine.trim().toLowerCase();
-  }, [storeName, locationCityLine]);
-
-  const showStoreSubtitle = useMemo(() => {
-    const a = storeMeta?.trim().toLowerCase();
-    const b = locationAddressLine?.trim().toLowerCase();
-    if (a && b && a === b) return false;
-    return true;
-  }, [storeMeta, locationAddressLine]);
-
   const scrollToCategory = useCallback(
     (id: string) => {
       setActiveCategoryId(id);
@@ -326,25 +312,23 @@ export default function MenuScreen() {
     <View style={styles.screen}>
       <View style={[styles.topBar, { paddingTop: Math.max(8, insets.top) }]}>
         <Pressable style={styles.locBtn} onPress={() => setLocationOpen(true)}>
-          <Text style={styles.locEmoji} accessibilityLabel="Location">
-            📍
-          </Text>
+          <Ionicons name="location-outline" size={18} color={colors.textPrimary} style={styles.locIcon} accessibilityLabel="Location" />
           <View style={styles.locTextCol}>
             <View style={styles.locTitleRow}>
               <Text style={styles.locCity} numberOfLines={1}>
                 {locationCityLine}
               </Text>
-              <Text style={styles.chev}>▼</Text>
+              <Ionicons name="chevron-down" size={14} color={colors.textSecondary} style={styles.chevIcon} />
             </View>
             {locationAddressLine ? (
-              <Text style={styles.locAddr} numberOfLines={2}>
+              <Text style={styles.locAddr} numberOfLines={1}>
                 {locationAddressLine}
               </Text>
             ) : null}
           </View>
         </Pressable>
-        <Pressable style={styles.userBtn} onPress={() => setAccountOpen(true)} accessibilityLabel="Account">
-          <Text style={styles.userEmoji}>👤</Text>
+        <Pressable style={styles.userBtn} onPress={() => setProfileLoginOpen(true)} accessibilityLabel="Account">
+          <Ionicons name="person-outline" size={18} color={colors.textPrimary} />
         </Pressable>
       </View>
 
@@ -359,8 +343,6 @@ export default function MenuScreen() {
         viewabilityConfig={{ itemVisiblePercentThreshold: 20, minimumViewTime: 80 }}
         ListHeaderComponent={
           <View style={styles.sticky}>
-            {!hideStoreTitleRow ? <Text style={styles.storeName}>{storeName}</Text> : null}
-            {showStoreSubtitle ? <Text style={styles.storeMeta}>{storeMeta}</Text> : null}
             <TextInput
               style={styles.search}
               placeholder="Search menu"
@@ -442,9 +424,17 @@ export default function MenuScreen() {
           await getCurrentLocation();
         }}
         locationLoading={isLoadingLocation}
+        showBackButton={false}
       />
 
-      <AccountSheet visible={accountOpen} onClose={() => setAccountOpen(false)} />
+      <LocationPickerModal
+        visible={profileLoginOpen}
+        onClose={() => setProfileLoginOpen(false)}
+        onSelectLocation={async (): Promise<void> => {}}
+        onUseCurrentLocation={async (): Promise<void> => {}}
+        requireAuthFirst
+        authOnly
+      />
 
       <CategoryPickerSheet
         visible={categoryOpen}
@@ -476,9 +466,8 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   locBtn: { flex: 1, flexDirection: "row", gap: 8, alignItems: "flex-start", paddingVertical: 4 },
-  locEmoji: { fontSize: 16, marginTop: 2 },
-  chev: { fontSize: 10, color: colors.textSecondary, marginTop: 4, marginLeft: 2 },
-  userEmoji: { fontSize: 20 },
+  locIcon: { marginTop: 2 },
+  chevIcon: { marginTop: 1, marginLeft: 2 },
   locTextCol: { flex: 1, minWidth: 0 },
   locTitleRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   locCity: { flex: 1, fontSize: 15, fontWeight: "600", color: colors.textPrimary },
@@ -500,8 +489,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  storeName: { fontSize: 22, fontWeight: "700", color: colors.textPrimary },
-  storeMeta: { marginTop: 4, fontSize: 14, color: colors.textSecondary },
   search: {
     marginTop: 12,
     borderWidth: 1,

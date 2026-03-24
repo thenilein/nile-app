@@ -48,8 +48,8 @@ export default function LandingScreen() {
         visible={sheetOpen}
         onClose={() => setSheetOpen(false)}
         onSelectLocation={onPickLocation}
-        title="Delivery location"
-        subtitle="Search, pick an address, or use GPS"
+        title="Choose Location"
+        requireAuthFirst
         onUseCurrentLocation={async () => {
           const ok = await getCurrentLocation();
           if (ok) {

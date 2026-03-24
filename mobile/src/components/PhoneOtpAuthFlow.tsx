@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -15,12 +15,19 @@ import {
   type ToastFn,
 } from "../lib/msg91Otp";
 import { colors } from "../lib/theme";
+import {
+  PRIMARY_BUTTON_HEIGHT,
+  PRIMARY_BUTTON_RADIUS,
+  iosPalette,
+} from "./flowSheet/IosFlowSheetChrome";
 
 export type PhoneOtpAuthFlowProps = {
   active: boolean;
   showToast: ToastFn;
   onAuthenticated: () => void;
   onGuestSkip?: () => void;
+  /** Matches LocationPickerModal iOS sheet styling */
+  variant?: "default" | "sheet";
 };
 
 export function PhoneOtpAuthFlow({
@@ -28,6 +35,7 @@ export function PhoneOtpAuthFlow({
   showToast,
   onAuthenticated,
   onGuestSkip,
+  variant = "default",
 }: PhoneOtpAuthFlowProps) {
   const [phone, setPhone] = useState("");
   const [fullName, setFullName] = useState("");
@@ -36,6 +44,10 @@ export function PhoneOtpAuthFlow({
   const [loading, setLoading] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
   const [otp, setOtp] = useState("");
+  const [otpPart1, setOtpPart1] = useState("");
+  const [otpPart2, setOtpPart2] = useState("");
+  const otpPart1Ref = useRef<TextInput>(null);
+  const otpPart2Ref = useRef<TextInput>(null);
 
   useEffect(() => {
     if (!active) {
@@ -46,8 +58,16 @@ export function PhoneOtpAuthFlow({
       setLoading(false);
       setProfileLoading(false);
       setOtp("");
+      setOtpPart1("");
+      setOtpPart2("");
     }
   }, [active]);
+
+  useEffect(() => {
+    if (!active || variant !== "sheet" || authStep !== "otp") return;
+    const t = setTimeout(() => otpPart1Ref.current?.focus(), 120);
+    return () => clearTimeout(t);
+  }, [active, authStep, variant]);
 
   const handleSendOtp = async () => {
     setError("");
@@ -68,8 +88,12 @@ export function PhoneOtpAuthFlow({
     }
   };
 
+  const sheetOtpDigits =
+    variant === "sheet" ? `${otpPart1}${otpPart2}`.replace(/\D/g, "").slice(0, 6) : otp;
+
   const handleVerifyOtp = async () => {
-    const ok = await verifyOtpCore(phone, otp, showToast, {
+    const code = variant === "sheet" ? sheetOtpDigits : otp;
+    const ok = await verifyOtpCore(phone, code, showToast, {
       onVerified: () => {
         showToast("success", "Welcome back to Nile Cafe!");
         onAuthenticated();
@@ -106,6 +130,126 @@ export function PhoneOtpAuthFlow({
     setPhone(raw);
     setError("");
   }, []);
+
+  if (variant === "sheet" && authStep === "phone") {
+    return (
+      <View style={sheetStyles.wrap}>
+        <Text style={sheetStyles.stepTitle}>Continue with phone</Text>
+        <Text style={sheetStyles.stepSubtitle}>Sign in quickly to continue your order.</Text>
+        <View style={[sheetStyles.phoneRow, error ? sheetStyles.phoneRowErr : null]}>
+          <Text style={sheetStyles.phonePrefix}>+91</Text>
+          <TextInput
+            style={sheetStyles.phoneInput}
+            keyboardType="phone-pad"
+            maxLength={10}
+            placeholder="9876543210"
+            placeholderTextColor="#9ca3af"
+            value={phone}
+            onChangeText={onPhoneChange}
+          />
+        </View>
+        {error ? <Text style={sheetStyles.errText}>{error}</Text> : null}
+        <Pressable
+          style={[sheetStyles.primaryCta, (phone.length !== 10 || loading) && sheetStyles.primaryCtaDisabled]}
+          onPress={handleSendOtp}
+          disabled={loading || phone.length !== 10}
+        >
+          {loading ? <ActivityIndicator color="#fff" /> : <Text style={sheetStyles.primaryCtaText}>Continue</Text>}
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (variant === "sheet" && authStep === "otp") {
+    const otpReady = sheetOtpDigits.length === 6;
+    return (
+      <View style={sheetStyles.wrap}>
+        <Text style={sheetStyles.stepTitle}>Verify number</Text>
+        <Text style={sheetStyles.stepSubtitle}>Enter the code sent to your phone.</Text>
+        <View style={sheetStyles.otpRow}>
+          <TextInput
+            ref={otpPart1Ref}
+            style={sheetStyles.otpInput}
+            value={otpPart1}
+            onChangeText={(t) => {
+              const value = t.replace(/\D/g, "").slice(0, 3);
+              setOtpPart1(value);
+              if (value.length === 3) otpPart2Ref.current?.focus();
+            }}
+            keyboardType="number-pad"
+            placeholder="123"
+            placeholderTextColor="#9ca3af"
+            maxLength={3}
+          />
+          <TextInput
+            ref={otpPart2Ref}
+            style={sheetStyles.otpInput}
+            value={otpPart2}
+            onChangeText={(t) => setOtpPart2(t.replace(/\D/g, "").slice(0, 3))}
+            onKeyPress={({ nativeEvent }) => {
+              if (nativeEvent.key === "Backspace" && otpPart2.length === 0) {
+                otpPart1Ref.current?.focus();
+              }
+            }}
+            keyboardType="number-pad"
+            placeholder="456"
+            placeholderTextColor="#9ca3af"
+            maxLength={3}
+          />
+        </View>
+        <Pressable
+          style={[sheetStyles.primaryCta, !otpReady && sheetStyles.primaryCtaDisabled]}
+          onPress={() => void handleVerifyOtp()}
+          disabled={!otpReady}
+        >
+          <Text style={sheetStyles.primaryCtaText}>Verify</Text>
+        </Pressable>
+        <Pressable onPress={handleResend} style={sheetStyles.linkBtn}>
+          <Text style={sheetStyles.linkText}>Resend OTP</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => {
+            setAuthStep("phone");
+            setOtpPart1("");
+            setOtpPart2("");
+          }}
+          style={sheetStyles.linkBtn}
+        >
+          <Text style={sheetStyles.linkText}>Change number</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (variant === "sheet" && authStep === "profile") {
+    return (
+      <View style={sheetStyles.wrap}>
+        <Text style={sheetStyles.stepTitle}>Your name</Text>
+        <Text style={sheetStyles.stepSubtitle}>Shown on your orders</Text>
+        <TextInput
+          style={sheetStyles.nameInput}
+          placeholder="Full name"
+          placeholderTextColor="#9ca3af"
+          value={fullName}
+          onChangeText={setFullName}
+        />
+        <Pressable
+          style={[sheetStyles.primaryCta, (!fullName.trim() || profileLoading) && sheetStyles.primaryCtaDisabled]}
+          onPress={handleCompleteProfile}
+          disabled={profileLoading || !fullName.trim()}
+        >
+          {profileLoading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={sheetStyles.primaryCtaText}>Create account</Text>
+          )}
+        </Pressable>
+        <Pressable onPress={() => setAuthStep("otp")} style={sheetStyles.linkBtn}>
+          <Text style={sheetStyles.linkText}>Back</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   if (authStep === "phone") {
     return (
@@ -279,4 +423,92 @@ const styles = StyleSheet.create({
   skipText: { color: colors.textSecondary, fontSize: 15, fontWeight: "600" },
   secondaryBtn: { paddingVertical: 8, alignItems: "center" },
   secondaryText: { color: colors.green, fontSize: 15, fontWeight: "600" },
+});
+
+const sheetStyles = StyleSheet.create({
+  wrap: { paddingTop: 4, paddingBottom: 8 },
+  stepTitle: {
+    color: iosPalette.textPrimary,
+    fontSize: 17,
+    fontWeight: "700",
+    letterSpacing: -0.2,
+  },
+  stepSubtitle: {
+    color: iosPalette.textSecondary,
+    fontSize: 14,
+    fontWeight: "400",
+    marginTop: 4,
+    marginBottom: 14,
+  },
+  phoneRow: {
+    borderRadius: PRIMARY_BUTTON_RADIUS,
+    backgroundColor: iosPalette.cardBg,
+    borderWidth: 1,
+    borderColor: iosPalette.border,
+    flexDirection: "row",
+    alignItems: "center",
+    overflow: "hidden",
+    minHeight: PRIMARY_BUTTON_HEIGHT,
+  },
+  phoneRowErr: { borderColor: "#ef4444" },
+  phonePrefix: {
+    width: 96,
+    textAlign: "center",
+    color: iosPalette.textSecondary,
+    fontSize: 18,
+    fontWeight: "500",
+    paddingVertical: 12,
+    borderRightWidth: 1,
+    borderRightColor: iosPalette.border,
+  },
+  phoneInput: {
+    flex: 1,
+    color: iosPalette.textPrimary,
+    fontSize: 17,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    fontWeight: "500",
+    minHeight: PRIMARY_BUTTON_HEIGHT,
+  },
+  errText: { color: "#ef4444", fontSize: 13, marginTop: -4 },
+  otpRow: { flexDirection: "row", gap: 10 },
+  otpInput: {
+    flex: 1,
+    borderRadius: PRIMARY_BUTTON_RADIUS,
+    backgroundColor: iosPalette.cardBg,
+    borderWidth: 1,
+    borderColor: iosPalette.border,
+    color: iosPalette.textPrimary,
+    fontSize: 20,
+    textAlign: "center",
+    letterSpacing: 2,
+    paddingVertical: 12,
+    fontWeight: "600",
+    minHeight: PRIMARY_BUTTON_HEIGHT,
+  },
+  nameInput: {
+    borderRadius: PRIMARY_BUTTON_RADIUS,
+    backgroundColor: iosPalette.cardBg,
+    borderWidth: 1,
+    borderColor: iosPalette.border,
+    color: iosPalette.textPrimary,
+    fontSize: 17,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    minHeight: PRIMARY_BUTTON_HEIGHT,
+  },
+  primaryCta: {
+    marginTop: 20,
+    alignSelf: "stretch",
+    minHeight: PRIMARY_BUTTON_HEIGHT,
+    borderRadius: PRIMARY_BUTTON_RADIUS,
+    backgroundColor: "#000",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+  },
+  primaryCtaDisabled: { opacity: 0.45 },
+  primaryCtaText: { color: "#fff", fontSize: 17, fontWeight: "600" },
+  linkBtn: { paddingVertical: 10, alignItems: "center" },
+  linkText: { color: iosPalette.textPrimary, fontSize: 15, fontWeight: "600", opacity: 0.85 },
 });
