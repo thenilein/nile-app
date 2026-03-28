@@ -373,6 +373,7 @@ export function useCheckoutFlow({
         product_id: item.product_id,
         quantity: item.quantity,
         price_at_purchase: item.price,
+        selected_options: item.selected_options ?? [],
       }));
       const { error: itemsError } = await supabase.from("order_items").insert(orderItemsInsert);
       if (itemsError) throw itemsError;

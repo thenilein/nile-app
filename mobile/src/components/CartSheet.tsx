@@ -31,8 +31,8 @@ import {
 } from "./flowSheet/IosFlowSheetChrome";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LocationPickerModal } from "./LocationPickerModal";
-import { PhoneOtpAuthFlow } from "./PhoneOtpAuthFlow";
+import { CheckoutPhoneAuth } from "./CheckoutPhoneAuth";
+import { StartScreenFlow } from "./flowSheet/StartScreenFlow";
 
 type FlowPage = "cart" | "auth" | "address" | "payment" | "success";
 
@@ -74,7 +74,7 @@ export function CartSheet({
 }) {
   const insets = useSafeAreaInsets();
   const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
-  const { items, updateQuantity, totalPrice } = useCart();
+  const { items, updateLineQuantity, totalPrice } = useCart();
   const { user, isLoading: authLoading } = useAuth();
 
   const [flowPage, setFlowPage] = useState<FlowPage>("cart");
@@ -361,19 +361,24 @@ export function CartSheet({
                                   <Text style={styles.lineName} numberOfLines={1}>
                                     {item.name}
                                   </Text>
-                                  <Text style={styles.linePrice}>₹{item.price}</Text>
+                                  {item.selected_options && item.selected_options.length > 0 ? (
+                                    <Text style={styles.lineOpts} numberOfLines={2}>
+                                      {item.selected_options.map((o) => o.label).join(" · ")}
+                                    </Text>
+                                  ) : null}
+                                  <Text style={styles.linePrice}>₹{item.price} each</Text>
                                 </View>
                                 <View style={styles.qty}>
                                   <Pressable
                                     style={styles.qtyHit}
-                                    onPress={() => updateQuantity(item.product_id, item.quantity - 1)}
+                                    onPress={() => updateLineQuantity(item.id, item.quantity - 1)}
                                   >
                                     <Text style={styles.qtyTxt}>−</Text>
                                   </Pressable>
                                   <Text style={styles.qtyNum}>{item.quantity}</Text>
                                   <Pressable
                                     style={styles.qtyHit}
-                                    onPress={() => updateQuantity(item.product_id, item.quantity + 1)}
+                                    onPress={() => updateLineQuantity(item.id, item.quantity + 1)}
                                   >
                                     <Text style={styles.qtyTxt}>+</Text>
                                   </Pressable>
@@ -389,9 +394,9 @@ export function CartSheet({
                     ) : null}
 
                     {page === "auth" ? (
-                      <PhoneOtpAuthFlow
+                      <CheckoutPhoneAuth
                         active={visible && flowPage === "auth"}
-                        variant="sheet"
+                        contentWidth={contentWidth}
                         showToast={checkout.showToast}
                         onAuthenticated={handleAuthSuccess}
                       />
@@ -414,7 +419,7 @@ export function CartSheet({
         </View>
       </IosFlowSheetFrame>
 
-      <LocationPickerModal
+      <StartScreenFlow
         visible={checkout.adjustPinOpen}
         onClose={() => checkout.setAdjustPinOpen(false)}
         onSelectLocation={(loc) => void checkout.setLocationData(loc)}
@@ -469,6 +474,7 @@ const styles = StyleSheet.create({
   thumbPh: { color: colors.textMuted },
   lineBody: { flex: 1, minWidth: 0 },
   lineName: { fontSize: 14, fontWeight: "600", color: colors.textPrimary },
+  lineOpts: { fontSize: 11, color: colors.textMuted, marginTop: 2, lineHeight: 14 },
   linePrice: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
   qty: {
     flexDirection: "row",

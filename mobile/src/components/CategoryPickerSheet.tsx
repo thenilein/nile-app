@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Easing,
   Modal,
-  PanResponder,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -15,89 +15,100 @@ import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../lib/theme";
 
-export type MenuGroup = {
+export type CategoryPickerItem = {
   id: string;
-  name?: string;
-  categories: { id: string; name: string; image_url?: string | null }[];
+  name: string;
+  image_url?: string | null;
 };
 
-const SHEET_MAX_HEIGHT_RATIO = 0.58;
-/** iOS-like sheet motion (ease-in-out ≈ Apple CAMediaTimingFunction) */
-const SHEET_OPEN_MS = 560;
-const SHEET_CLOSE_MS = 460;
-const SHEET_DRAG_DISMISS_MS = 460;
-/** Standard ease-in-out; avoids the harsh end of (0.32, 0.72, 0, 1) on dismiss */
-const SHEET_EASING_PRESENT = Easing.bezier(0.22, 1, 0.36, 1);
-const SHEET_EASING_DISMISS = Easing.bezier(0.42, 0, 0.58, 1);
+/** Window coordinates of the category pill (from `measureInWindow`). */
+export type CategoryOriginRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
 
+const OPEN_SPRING = { damping: 28, stiffness: 340, mass: 0.82, overshootClamping: false };
+const CLOSE_MS = 260;
+const EASING_CLOSE = Easing.bezier(0.42, 0, 0.58, 1);
+
+function fallbackOrigin(vw: number, vh: number, bottomPad: number): CategoryOriginRect {
+  const w = Math.min(260, Math.max(160, vw * 0.5));
+  const h = 50;
+  return {
+    x: (vw - w) / 2 - vw * 0.08,
+    y: vh - bottomPad - h,
+    width: w,
+    height: h,
+  };
+}
+
+/** Sheet morphs from the category FAB rect to a bottom card (no blur). */
 export function CategoryPickerSheet({
   visible,
   onClose,
-  menuGroups,
+  categories,
   activeCategoryId,
   onSelectCategory,
+  originRect,
 }: {
   visible: boolean;
   onClose: () => void;
-  menuGroups: MenuGroup[];
+  categories: CategoryPickerItem[];
   activeCategoryId: string | null;
   onSelectCategory: (id: string) => void;
+  /** Measured FAB; when null, a bottom-left-ish fallback is used. */
+  originRect: CategoryOriginRect | null;
 }) {
   const insets = useSafeAreaInsets();
-  const { height: viewportHeight } = useWindowDimensions();
-  const translateY = useRef(new Animated.Value(0)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const { width: vw, height: vh } = useWindowDimensions();
+  const progress = useRef(new Animated.Value(0)).current;
   const [internalVisible, setInternalVisible] = useState(false);
-  const dragStartYRef = useRef(0);
-  const sheetHeightRef = useRef(0);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
-  const sheetHeight = Math.min(viewportHeight * SHEET_MAX_HEIGHT_RATIO, viewportHeight * 0.72);
-  sheetHeightRef.current = sheetHeight;
+  const bottomPad = Math.max(12, insets.bottom + 8);
 
-  useEffect(() => {
+  const { maxH, openWidth, start, end } = useMemo(() => {
+    const maxHeight = Math.min(vh * 0.52, vh - insets.top - 24);
+    const wOpen = Math.min(vw - 48, vw * 0.86);
+    const o = originRect ?? fallbackOrigin(vw, vh, bottomPad);
+    const endLeft = (vw - wOpen) / 2;
+    const endTop = vh - bottomPad - maxHeight;
+    const startR = Math.min(o.width, o.height) / 2;
+    return {
+      maxH: maxHeight,
+      openWidth: wOpen,
+      start: o,
+      end: { left: endLeft, top: endTop, width: wOpen, height: maxHeight, radius: 22, startRadius: startR },
+    };
+  }, [vh, vw, insets.top, originRect, bottomPad]);
+
+  useLayoutEffect(() => {
     if (visible) setInternalVisible(true);
   }, [visible]);
 
   useEffect(() => {
     if (!visible || !internalVisible) return;
-    translateY.setValue(viewportHeight);
-    backdropOpacity.setValue(0);
-    const anim = Animated.parallel([
-      Animated.timing(translateY, {
-        toValue: 0,
-        duration: SHEET_OPEN_MS,
-        easing: SHEET_EASING_PRESENT,
-        useNativeDriver: false,
-      }),
-      Animated.timing(backdropOpacity, {
-        toValue: 1,
-        duration: SHEET_OPEN_MS - 40,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }),
-    ]);
+    progress.setValue(0);
+    const anim = Animated.spring(progress, {
+      toValue: 1,
+      ...OPEN_SPRING,
+      useNativeDriver: false,
+    });
     anim.start();
     return () => anim.stop();
-  }, [visible, internalVisible, backdropOpacity, translateY, viewportHeight]);
+  }, [visible, internalVisible, progress]);
 
   useEffect(() => {
     if (visible || !internalVisible) return;
-    const anim = Animated.parallel([
-      Animated.timing(translateY, {
-        toValue: viewportHeight,
-        duration: SHEET_CLOSE_MS,
-        easing: SHEET_EASING_DISMISS,
-        useNativeDriver: false,
-      }),
-      Animated.timing(backdropOpacity, {
-        toValue: 0,
-        duration: SHEET_CLOSE_MS,
-        easing: SHEET_EASING_DISMISS,
-        useNativeDriver: false,
-      }),
-    ]);
+    const anim = Animated.timing(progress, {
+      toValue: 0,
+      duration: CLOSE_MS,
+      easing: EASING_CLOSE,
+      useNativeDriver: false,
+    });
     let cancelled = false;
     anim.start(({ finished }) => {
       if (finished && !cancelled) setInternalVisible(false);
@@ -106,164 +117,132 @@ export function CategoryPickerSheet({
       cancelled = true;
       anim.stop();
     };
-  }, [visible, internalVisible, backdropOpacity, translateY, viewportHeight]);
+  }, [visible, internalVisible, progress]);
 
-  const sheetPanResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_, g) => g.dy > 4 && Math.abs(g.dy) > Math.abs(g.dx) * 0.5,
-        onMoveShouldSetPanResponderCapture: (_, g) => g.dy > 4 && Math.abs(g.dy) > Math.abs(g.dx) * 0.5,
-        onPanResponderTerminationRequest: () => false,
-        onPanResponderGrant: () => {
-          translateY.stopAnimation((v) => {
-            dragStartYRef.current = typeof v === "number" ? v : 0;
-          });
-        },
-        onPanResponderMove: (_, g) => {
-          const y = Math.max(0, dragStartYRef.current + g.dy);
-          translateY.setValue(y);
-          const maxDim = Math.min(viewportHeight * 0.5, 420);
-          backdropOpacity.setValue(Math.max(0.12, 1 - y / maxDim));
-        },
-        onPanResponderRelease: (_, g) => {
-          const y = Math.max(0, dragStartYRef.current + g.dy);
-          const threshold = Math.max(96, sheetHeightRef.current * 0.22);
-          const vel = g.vy ?? 0;
-          if (y > threshold || vel > 0.45) {
-            Animated.parallel([
-              Animated.timing(translateY, {
-                toValue: viewportHeight,
-                duration: SHEET_DRAG_DISMISS_MS,
-                easing: SHEET_EASING_DISMISS,
-                useNativeDriver: false,
-              }),
-              Animated.timing(backdropOpacity, {
-                toValue: 0,
-                duration: SHEET_DRAG_DISMISS_MS,
-                easing: SHEET_EASING_DISMISS,
-                useNativeDriver: false,
-              }),
-            ]).start(({ finished }) => {
-              if (finished) {
-                setInternalVisible(false);
-                onCloseRef.current();
-              }
-            });
-          } else {
-            Animated.parallel([
-              Animated.spring(translateY, {
-                toValue: 0,
-                damping: 28,
-                stiffness: 260,
-                mass: 0.95,
-                useNativeDriver: false,
-              }),
-              Animated.timing(backdropOpacity, {
-                toValue: 1,
-                duration: 320,
-                easing: Easing.out(Easing.cubic),
-                useNativeDriver: false,
-              }),
-            ]).start();
-          }
-        },
-      }),
-    [backdropOpacity, translateY, viewportHeight]
-  );
+  const leftAnim = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [start.x, end.left],
+  });
+  const topAnim = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [start.y, end.top],
+  });
+  const widthAnim = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [start.width, end.width],
+  });
+  const heightAnim = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [start.height, end.height],
+  });
+  const borderRadiusAnim = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [end.startRadius, end.radius],
+  });
+  const backdropOpacity = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+  const contentOpacity = progress.interpolate({
+    inputRange: [0, 0.18, 1],
+    outputRange: [0, 1, 1],
+  });
 
   return (
-    <Modal visible={internalVisible} animationType="none" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <Animated.View pointerEvents="none" style={[styles.backdropShade, { opacity: backdropOpacity }]} />
-        <Pressable style={styles.backdropPress} onPress={onClose} />
+    <Modal
+      visible={internalVisible}
+      animationType="none"
+      transparent
+      statusBarTranslucent
+      presentationStyle={Platform.OS === "ios" ? "overFullScreen" : undefined}
+      onRequestClose={onClose}
+    >
+      <View style={styles.wrap} pointerEvents="box-none">
+        <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]} pointerEvents="box-none">
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Dismiss" />
+        </Animated.View>
+
         <Animated.View
           style={[
             styles.sheet,
             {
-              height: sheetHeight,
-              paddingBottom: insets.bottom + 20,
-              transform: [{ translateY }],
+              left: leftAnim,
+              top: topAnim,
+              width: widthAnim,
+              height: heightAnim,
+              borderRadius: borderRadiusAnim,
             },
           ]}
         >
-          <View
-            style={styles.sheetDragZone}
-            collapsable={false}
-            {...sheetPanResponder.panHandlers}
-          >
-            <View style={styles.grabberHit} pointerEvents="box-only">
-              <View style={styles.grabber} />
-            </View>
-            <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>Categories</Text>
-              <Pressable onPress={onClose} hitSlop={12}>
-                <Text style={styles.close}>✕</Text>
-              </Pressable>
-            </View>
+          <View style={styles.grabberRow}>
+            <View style={styles.grabber} />
           </View>
-          <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
-            {menuGroups.map((group) => (
-              <View key={group.id} style={styles.group}>
-                {group.name ? <Text style={styles.groupLabel}>{group.name}</Text> : null}
-                {group.categories.map((cat) => {
-                  const active = activeCategoryId === cat.id;
-                  return (
-                    <Pressable
-                      key={cat.id}
-                      style={[styles.catRow, active && styles.catRowActive]}
-                      onPress={() => {
-                        onSelectCategory(cat.id);
-                        onClose();
-                      }}
-                    >
-                      <View style={styles.catIcon}>
-                        {cat.image_url ? (
-                          <Image source={{ uri: cat.image_url }} style={styles.catImg} contentFit="cover" />
-                        ) : (
-                          <Text style={styles.catLetter}>{cat.name.charAt(0).toUpperCase()}</Text>
-                        )}
-                      </View>
-                      <Text style={[styles.catName, active && styles.catNameActive]} numberOfLines={1}>
-                        {cat.name}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            ))}
-          </ScrollView>
+
+          <Animated.View style={[styles.sheetInner, { opacity: contentOpacity }]}>
+            <ScrollView
+              style={styles.scroll}
+              contentContainerStyle={styles.scrollContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {categories.map((cat) => {
+                const active = activeCategoryId === cat.id;
+                return (
+                  <Pressable
+                    key={cat.id}
+                    style={[styles.row, active && styles.rowActive]}
+                    onPress={() => {
+                      onSelectCategory(cat.id);
+                      onCloseRef.current();
+                    }}
+                  >
+                    <View style={styles.thumbWrap}>
+                      {cat.image_url ? (
+                        <Image source={{ uri: cat.image_url }} style={styles.thumbImg} contentFit="cover" />
+                      ) : (
+                        <Text style={styles.thumbLetter}>{cat.name.charAt(0).toUpperCase()}</Text>
+                      )}
+                    </View>
+                    <Text style={[styles.rowLabel, active && styles.rowLabelActive]} numberOfLines={1}>
+                      {cat.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </Animated.View>
         </Animated.View>
       </View>
     </Modal>
   );
 }
 
+const THUMB = 48;
+
 const styles = StyleSheet.create({
-  overlay: {
+  wrap: {
     flex: 1,
-    backgroundColor: "transparent",
-    justifyContent: "flex-end",
   },
-  backdropShade: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.4)" },
-  backdropPress: { ...StyleSheet.absoluteFillObject },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0, 0, 0, 0.22)",
+  },
   sheet: {
+    position: "absolute",
+    overflow: "hidden",
     backgroundColor: colors.white,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingHorizontal: 20,
-    paddingTop: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
     shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 24,
-    elevation: 20,
+    shadowOpacity: 0.14,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 12,
   },
-  sheetDragZone: { paddingBottom: 4 },
-  /** Tall touch target so the pan wins before ScrollView / buttons */
-  grabberHit: {
-    alignSelf: "stretch",
+  grabberRow: {
     alignItems: "center",
-    paddingVertical: 10,
-    marginBottom: 2,
+    paddingTop: 8,
+    paddingBottom: 4,
   },
   grabber: {
     width: 36,
@@ -271,41 +250,52 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: colors.border,
   },
-  sheetHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
-  sheetTitle: { fontSize: 20, fontWeight: "700", color: colors.textPrimary },
-  close: { fontSize: 18, color: colors.textMuted, padding: 8 },
-  scroll: { flexGrow: 0 },
-  group: { marginBottom: 20 },
-  groupLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 2,
-    color: colors.textMuted,
-    textTransform: "uppercase",
-    marginBottom: 8,
-    marginLeft: 4,
+  sheetInner: {
+    flex: 1,
+    minHeight: 0,
   },
-  catRow: {
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: 14, paddingTop: 4, paddingBottom: 12 },
+  row: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    marginBottom: 8,
-  },
-  catRowActive: { backgroundColor: colors.greenSoft },
-  catIcon: {
-    width: 40,
-    height: 40,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
     borderRadius: 12,
+    marginBottom: 2,
+  },
+  rowActive: {
+    backgroundColor: colors.borderLight,
+  },
+  thumbWrap: {
+    width: THUMB,
+    height: THUMB,
+    borderRadius: THUMB / 2,
     backgroundColor: colors.pillBg,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
   },
-  catImg: { width: "100%", height: "100%" },
-  catLetter: { fontSize: 14, fontWeight: "700", color: colors.textSecondary },
-  catName: { flex: 1, fontSize: 15, fontWeight: "500", color: "#374151" },
-  catNameActive: { color: colors.greenDark, fontWeight: "600" },
+  thumbImg: {
+    width: THUMB,
+    height: THUMB,
+    borderRadius: THUMB / 2,
+  },
+  thumbLetter: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: colors.textSecondary,
+  },
+  rowLabel: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: "500",
+    color: colors.textPrimary,
+    letterSpacing: -0.2,
+  },
+  rowLabelActive: {
+    color: colors.textPrimary,
+    fontWeight: "600",
+  },
 });

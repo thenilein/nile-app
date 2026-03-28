@@ -5,6 +5,9 @@ import { getMapboxAccessTokenResolved } from "./envPublic";
  * Token: EXPO_PUBLIC_MAPBOX_* in mobile/.env, VITE_MAPBOX_ACCESS_TOKEN in repo-root .env, or app.config extra.
  */
 
+/** Minimum trimmed length before calling forward geocode (reduces noise and API churn). */
+export const FORWARD_GEOCODE_MIN_QUERY_LENGTH = 4;
+
 export interface GeocodeSuggestion {
   id: string;
   displayName: string;
@@ -161,7 +164,7 @@ export async function mapboxForwardGeocode(query: string, limit = 8): Promise<Ge
   if (!token) return [];
 
   const q = query.trim();
-  if (q.length < 2) return [];
+  if (q.length < FORWARD_GEOCODE_MIN_QUERY_LENGTH) return [];
 
   const lim = Math.min(Math.max(limit, 1), 10);
   const params = new URLSearchParams({

@@ -3,31 +3,64 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const CART_KEY = "nile_cart";
 
+export type SelectedCartOption = {
+  id: string;
+  option_type: string;
+  label: string;
+  price_delta: number;
+};
+
 export interface CartItem {
   id: string;
   product_id: string;
   name: string;
+  /** Unit price including selected option deltas, frozen at add time. */
   price: number;
   quantity: number;
   image_url?: string;
+  selected_options?: SelectedCartOption[];
 }
+
+function optionsSignature(opts: SelectedCartOption[] | undefined): string {
+  if (!opts?.length) return "";
+  return [...opts]
+    .map((o) => o.id)
+    .sort()
+    .join("|");
+}
+
+type ProductInput = {
+  id: string;
+  name: string;
+  price: number;
+  image_url?: string | null;
+};
 
 interface CartContextType {
   items: CartItem[];
-  addToCart: (product: {
-    id: string;
-    name: string;
-    price: number;
-    image_url?: string | null;
-  }, quantity?: number) => void;
+  addToCart: (product: ProductInput, quantity?: number, selected_options?: SelectedCartOption[]) => void;
+  removeLine: (lineId: string) => void;
+  /** @deprecated use removeLine */
   removeFromCart: (productId: string) => void;
-  updateQuantity: (productId: string, quantity: number) => void;
+  updateLineQuantity: (lineId: string, quantity: number) => void;
+  /** @deprecated use updateLineQuantity */
+  updateQuantity: (lineIdOrProductId: string, quantity: number) => void;
+  decrementProduct: (productId: string) => void;
   clearCart: () => void;
   totalItems: number;
   totalPrice: number;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
+
+function migrateCartItems(raw: unknown): CartItem[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((row: CartItem) => ({
+    ...row,
+    selected_options: row.selected_options ?? [],
+    price: typeof row.price === "number" ? row.price : 0,
+  }));
+}
 
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [items, setItems] = useState<CartItem[]>([]);
@@ -37,7 +70,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     AsyncStorage.getItem(CART_KEY).then((raw) => {
       if (raw) {
         try {
-          setItems(JSON.parse(raw));
+          setItems(migrateCartItems(JSON.parse(raw)));
         } catch {
           setItems([]);
         }
@@ -51,46 +84,84 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     AsyncStorage.setItem(CART_KEY, JSON.stringify(items));
   }, [items, hydrated]);
 
-  const addToCart = useCallback(
-    (
-      product: { id: string; name: string; price: number; image_url?: string | null },
-      quantity = 1
-    ) => {
-      setItems((current) => {
-        const existing = current.find((item) => item.product_id === product.id);
-        if (existing) {
-          return current.map((item) =>
-            item.product_id === product.id ? { ...item, quantity: item.quantity + quantity } : item
-          );
-        }
-        return [
-          ...current,
-          {
-            id: Math.random().toString(36).slice(2, 11),
-            product_id: product.id,
-            name: product.name,
-            price: product.price,
-            quantity,
-            image_url: product.image_url ?? undefined,
-          },
-        ];
-      });
-    },
-    []
-  );
+  const addToCart = useCallback((product: ProductInput, quantity = 1, selected_options?: SelectedCartOption[]) => {
+    const sig = optionsSignature(selected_options);
+    const unitPrice = product.price;
+    setItems((current) => {
+      const existing = current.find(
+        (item) => item.product_id === product.id && optionsSignature(item.selected_options) === sig
+      );
+      if (existing) {
+        return current.map((item) =>
+          item.id === existing.id ? { ...item, quantity: item.quantity + quantity } : item
+        );
+      }
+      return [
+        ...current,
+        {
+          id: Math.random().toString(36).slice(2, 11),
+          product_id: product.id,
+          name: product.name,
+          price: unitPrice,
+          quantity,
+          image_url: product.image_url ?? undefined,
+          selected_options: selected_options?.length ? selected_options : undefined,
+        },
+      ];
+    });
+  }, []);
+
+  const removeLine = useCallback((lineId: string) => {
+    setItems((current) => current.filter((item) => item.id !== lineId));
+  }, []);
 
   const removeFromCart = useCallback((productId: string) => {
     setItems((current) => current.filter((item) => item.product_id !== productId));
   }, []);
 
-  const updateQuantity = useCallback((productId: string, quantity: number) => {
+  const updateLineQuantity = useCallback((lineId: string, quantity: number) => {
     if (quantity < 1) {
-      setItems((current) => current.filter((item) => item.product_id !== productId));
+      setItems((current) => current.filter((item) => item.id !== lineId));
       return;
     }
     setItems((current) =>
-      current.map((item) => (item.product_id === productId ? { ...item, quantity } : item))
+      current.map((item) => (item.id === lineId ? { ...item, quantity } : item))
     );
+  }, []);
+
+  /** Supports line id (preferred) or legacy: last line matching product id. */
+  const updateQuantity = useCallback((lineIdOrProductId: string, quantity: number) => {
+    setItems((current) => {
+      const byLine = current.find((i) => i.id === lineIdOrProductId);
+      if (byLine) {
+        if (quantity < 1) return current.filter((item) => item.id !== lineIdOrProductId);
+        return current.map((item) => (item.id === lineIdOrProductId ? { ...item, quantity } : item));
+      }
+      const matches = current.filter((i) => i.product_id === lineIdOrProductId);
+      if (matches.length === 0) return current;
+      if (matches.length === 1) {
+        const only = matches[0];
+        if (quantity < 1) return current.filter((item) => item.id !== only.id);
+        return current.map((item) => (item.id === only.id ? { ...item, quantity } : item));
+      }
+      const last = matches[matches.length - 1];
+      if (quantity < 1) return current.filter((item) => item.id !== last.id);
+      return current.map((item) => (item.id === last.id ? { ...item, quantity } : item));
+    });
+  }, []);
+
+  const decrementProduct = useCallback((productId: string) => {
+    setItems((current) => {
+      for (let i = current.length - 1; i >= 0; i--) {
+        if (current[i].product_id !== productId) continue;
+        const q = current[i].quantity;
+        if (q > 1) {
+          return current.map((it, idx) => (idx === i ? { ...it, quantity: q - 1 } : it));
+        }
+        return current.filter((_, idx) => idx !== i);
+      }
+      return current;
+    });
   }, []);
 
   const clearCart = useCallback(() => setItems([]), []);
@@ -102,13 +173,27 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     () => ({
       items,
       addToCart,
+      removeLine,
       removeFromCart,
+      updateLineQuantity,
       updateQuantity,
+      decrementProduct,
       clearCart,
       totalItems,
       totalPrice,
     }),
-    [items, addToCart, removeFromCart, updateQuantity, clearCart, totalItems, totalPrice]
+    [
+      items,
+      addToCart,
+      removeLine,
+      removeFromCart,
+      updateLineQuantity,
+      updateQuantity,
+      decrementProduct,
+      clearCart,
+      totalItems,
+      totalPrice,
+    ]
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

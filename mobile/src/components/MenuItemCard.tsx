@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
-import { useCart } from "../context/CartContext";
-import { colors } from "../lib/theme";
+import { useCart, type SelectedCartOption } from "../context/CartContext";
+import type { ItemOptionRow } from "../lib/itemOptions";
+import { ProductCustomizeSheet } from "./ProductCustomizeSheet";
 
 export interface Product {
   id: string;
@@ -16,177 +17,234 @@ export interface Product {
   is_veg?: boolean;
 }
 
-export function MenuItemCard({ product }: { product: Product }) {
-  const { items, addToCart, updateQuantity } = useCart();
-  const cartItem = items.find((i) => i.product_id === product.id);
-  const qty = cartItem?.quantity ?? 0;
-  const qtyRef = useRef(qty);
+/** Apple-style elevated card (light grouped / Wallet-like surface). */
+const CARD_BG = "#FFFFFF";
+const IMAGE_PLACEHOLDER_BG = "#F2F2F7";
+const TAG_FILL = "rgba(60, 60, 67, 0.09)";
+const LABEL_PRIMARY = "#1C1C1E";
+const LABEL_SECONDARY = "#636366";
+const SEPARATOR = "rgba(60, 60, 67, 0.18)";
+
+export function MenuItemCard({
+  product,
+  itemOptions = [],
+}: {
+  product: Product;
+  itemOptions?: ItemOptionRow[];
+}) {
+  const { items, addToCart, updateQuantity, decrementProduct } = useCart();
+  const [customizeOpen, setCustomizeOpen] = useState(false);
+
+  const hasOptions = itemOptions.length > 0;
+
+  const totalQty = useMemo(
+    () => items.filter((i) => i.product_id === product.id).reduce((s, i) => s + i.quantity, 0),
+    [items, product.id]
+  );
+
+  const qtyRef = useRef(totalQty);
   useEffect(() => {
-    qtyRef.current = qty;
-  }, [qty]);
+    qtyRef.current = totalQty;
+  }, [totalQty]);
 
   const unavailable = !product.is_available || !product.is_active;
   const veg = product.is_veg !== false;
 
-  const onAdd = () => addToCart(product);
+  const onAdd = () => {
+    if (hasOptions) setCustomizeOpen(true);
+    else addToCart(product);
+  };
+
+  const onCustomizeConfirm = useCallback(
+    (selected: SelectedCartOption[], unitPrice: number) => {
+      addToCart(
+        {
+          id: product.id,
+          name: product.name,
+          price: unitPrice,
+          image_url: product.image_url,
+        },
+        1,
+        selected
+      );
+    },
+    [addToCart, product]
+  );
+
   const onInc = () => {
+    if (hasOptions) {
+      setCustomizeOpen(true);
+      return;
+    }
     qtyRef.current += 1;
     updateQuantity(product.id, qtyRef.current);
   };
+
   const onDec = () => {
-    qtyRef.current -= 1;
-    updateQuantity(product.id, qtyRef.current);
+    decrementProduct(product.id);
   };
 
   return (
-    <View style={[styles.row, unavailable && styles.rowDisabled]}>
-      <View style={styles.left}>
-        <View style={styles.titleRow}>
-          <View style={[styles.vegBox, veg ? styles.vegBoxVeg : styles.vegBoxNon]}>
-            <View style={[styles.vegDot, veg ? styles.vegDotVeg : styles.vegDotNon]} />
+    <View style={[styles.card, unavailable && styles.cardDisabled]}>
+      <ProductCustomizeSheet
+        visible={customizeOpen}
+        product={{ id: product.id, name: product.name, price: product.price }}
+        options={itemOptions}
+        onClose={() => setCustomizeOpen(false)}
+        onConfirm={onCustomizeConfirm}
+      />
+
+      <View style={styles.imageSection}>
+        {product.image_url ? (
+          <Image source={{ uri: product.image_url }} style={styles.image} />
+        ) : (
+          <View style={styles.imgPlaceholder}>
+            <Text style={styles.imgPhText}>No image</Text>
           </View>
-          <View style={styles.titleTextCol}>
-            {product.is_popular ? (
-              <View style={styles.popular}>
-                <Text style={styles.popularText}>Bestseller</Text>
-              </View>
-            ) : null}
-            <Text style={styles.name}>{product.name}</Text>
-          </View>
-        </View>
-        <Text style={styles.price}>₹{product.price}</Text>
-        {product.description ? (
-          <Text style={styles.desc} numberOfLines={3}>
-            {product.description}
-          </Text>
-        ) : null}
+        )}
       </View>
-      <View style={styles.right}>
-        <View style={styles.imgWrap}>
-          {product.image_url ? (
-            <Image source={{ uri: product.image_url }} style={styles.img} />
-          ) : (
-            <View style={styles.imgPlaceholder}>
-              <Text style={styles.imgPhText}>No image</Text>
+      <View style={styles.content}>
+        <View style={styles.tagsRow}>
+          {product.is_popular ? (
+            <View style={styles.tagPill}>
+              <Text style={styles.tagText} numberOfLines={1}>
+                ★ Bestseller
+              </Text>
             </View>
-          )}
-        </View>
-        <View style={styles.addWrap}>
-          {unavailable ? (
-            <Text style={styles.unavail}>Unavailable</Text>
-          ) : qty === 0 ? (
-            <Pressable style={styles.addBtn} onPress={onAdd}>
-              <Text style={styles.addBtnText}>ADD</Text>
-            </Pressable>
-          ) : (
-            <View style={styles.qtyBar}>
-              <Pressable style={styles.qtyBtn} onPress={onDec}>
-                <Text style={styles.qtyBtnText}>−</Text>
-              </Pressable>
-              <Text style={styles.qtyNum}>{qty}</Text>
-              <Pressable style={styles.qtyBtn} onPress={onInc}>
-                <Text style={styles.qtyBtnText}>+</Text>
-              </Pressable>
+          ) : null}
+          <View style={styles.tagPill}>
+            <Text style={styles.tagText}>{veg ? "Veg" : "Non-veg"}</Text>
+          </View>
+          {hasOptions ? (
+            <View style={styles.tagPill}>
+              <Text style={styles.tagText}>Customise</Text>
             </View>
-          )}
+          ) : null}
         </View>
+        <Text style={styles.name} numberOfLines={2}>
+          {product.name}
+        </Text>
+        {unavailable ? (
+          <Text style={styles.unavail}>Unavailable</Text>
+        ) : (
+          <View style={styles.priceActionRow}>
+            <View style={styles.pricePill}>
+              <Text style={styles.pricePillText}>₹{product.price}</Text>
+            </View>
+            {totalQty === 0 ? (
+              <Pressable style={styles.addBtn} onPress={onAdd}>
+                <Text style={styles.addBtnText}>{hasOptions ? "Choose" : "Add"}</Text>
+              </Pressable>
+            ) : (
+              <View style={styles.qtyBar}>
+                <Pressable style={styles.qtyBtn} onPress={onDec}>
+                  <Text style={styles.qtyBtnText}>−</Text>
+                </Pressable>
+                <Text style={styles.qtyNum}>{totalQty}</Text>
+                <Pressable style={styles.qtyBtn} onPress={onInc}>
+                  <Text style={styles.qtyBtnText}>+</Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
+        )}
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: {
-    flexDirection: "row",
-    paddingVertical: 18,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.borderLight,
-    gap: 12,
-  },
-  rowDisabled: { opacity: 0.55 },
-  left: { flex: 1, minWidth: 0, paddingRight: 8 },
-  titleRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
-  vegBox: {
-    width: 16,
-    height: 16,
-    borderWidth: 1,
-    borderRadius: 3,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 3,
-  },
-  vegBoxVeg: { borderColor: "#16a34a" },
-  vegBoxNon: { borderColor: "#ef4444" },
-  vegDot: { width: 8, height: 8, borderRadius: 4 },
-  vegDotVeg: { backgroundColor: "#16a34a" },
-  vegDotNon: { backgroundColor: "#ef4444" },
-  titleTextCol: { flex: 1 },
-  popular: {
-    alignSelf: "flex-start",
-    backgroundColor: "#FFF7ED",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 999,
-    marginBottom: 4,
-  },
-  popularText: { fontSize: 10, fontWeight: "700", color: "#C2410C" },
-  name: { fontSize: 17, fontWeight: "600", color: colors.textPrimary },
-  price: { fontSize: 18, fontWeight: "600", color: colors.textPrimary, marginTop: 6 },
-  desc: { fontSize: 14, color: colors.textSecondary, marginTop: 6, lineHeight: 20 },
-  right: { width: 118, alignItems: "center" },
-  imgWrap: {
-    width: 118,
-    height: 110,
-    borderRadius: 16,
+  card: {
+    width: "100%",
+    borderRadius: 12,
     overflow: "hidden",
-    backgroundColor: "#FEF3C7",
+    backgroundColor: CARD_BG,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: SEPARATOR,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  img: { width: "100%", height: "100%" },
+  cardDisabled: { opacity: 0.55 },
+  imageSection: {
+    width: "100%",
+    aspectRatio: 1.05,
+    backgroundColor: IMAGE_PLACEHOLDER_BG,
+  },
+  image: { width: "100%", height: "100%" },
   imgPlaceholder: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F8FAFC",
+    backgroundColor: IMAGE_PLACEHOLDER_BG,
   },
-  imgPhText: { fontSize: 10, fontWeight: "600", color: colors.textMuted, letterSpacing: 1 },
-  addWrap: { marginTop: -16, alignItems: "center" },
+  imgPhText: { fontSize: 10, fontWeight: "600", color: LABEL_SECONDARY, letterSpacing: 0.2 },
+  content: {
+    paddingHorizontal: 10,
+    paddingTop: 10,
+    paddingBottom: 10,
+  },
+  tagsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: 6,
+  },
+  tagPill: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: TAG_FILL,
+  },
+  tagText: { fontSize: 10, fontWeight: "600", color: LABEL_SECONDARY },
+  name: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: LABEL_PRIMARY,
+    lineHeight: 18,
+    letterSpacing: -0.2,
+    marginBottom: 8,
+    minHeight: 36,
+  },
+  priceActionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 6,
+  },
+  pricePill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: TAG_FILL,
+    flexShrink: 0,
+  },
+  pricePillText: { fontSize: 12, fontWeight: "700", color: LABEL_PRIMARY },
   addBtn: {
-    minWidth: 78,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#D1D5DB",
-    backgroundColor: colors.white,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "#E5E5EA",
+    flexShrink: 0,
   },
-  addBtnText: { fontSize: 14, fontWeight: "700", color: colors.green },
+  addBtnText: { fontSize: 12, fontWeight: "700", color: LABEL_PRIMARY },
   qtyBar: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.green,
-    borderRadius: 12,
+    borderRadius: 999,
     overflow: "hidden",
-    shadowColor: colors.green,
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 4,
+    backgroundColor: "#15803d",
+    flexShrink: 0,
   },
-  qtyBtn: { width: 36, height: 40, alignItems: "center", justifyContent: "center" },
-  qtyBtnText: { color: "#fff", fontSize: 20, fontWeight: "700" },
-  qtyNum: { minWidth: 28, textAlign: "center", color: "#fff", fontWeight: "700" },
+  qtyBtn: { width: 28, height: 28, alignItems: "center", justifyContent: "center" },
+  qtyBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  qtyNum: { minWidth: 20, textAlign: "center", color: "#fff", fontWeight: "700", fontSize: 13 },
   unavail: {
     fontSize: 11,
     fontWeight: "600",
-    color: colors.textMuted,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: colors.white,
+    color: LABEL_SECONDARY,
+    marginTop: 2,
   },
 });

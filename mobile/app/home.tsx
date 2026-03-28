@@ -12,12 +12,12 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CartSheet } from "../src/components/CartSheet";
-import { CategoryPickerSheet, type MenuGroup } from "../src/components/CategoryPickerSheet";
-import { LocationPickerModal } from "../src/components/LocationPickerModal";
+import { CategoryPickerSheet, type CategoryOriginRect } from "../src/components/CategoryPickerSheet";
+import { StartScreenFlow } from "../src/components/flowSheet/StartScreenFlow";
 import { MenuItemCard, type Product } from "../src/components/MenuItemCard";
-import { PromoBanner } from "../src/components/PromoBanner";
 import { useCart } from "../src/context/CartContext";
 import { useLocation } from "../src/context/LocationContext";
+import type { ItemOptionRow } from "../src/lib/itemOptions";
 import { supabase } from "../src/lib/supabase";
 import { colors } from "../src/lib/theme";
 import type { LocationData } from "../src/types/location";
@@ -31,6 +31,13 @@ interface Category {
   is_active?: boolean;
   image_url?: string | null;
 }
+
+/** Menu sections on home; category picker uses a flat list derived from this order. */
+type MenuGroup = {
+  id: string;
+  name?: string;
+  categories: Category[];
+};
 
 interface TopMenu {
   id: string;
@@ -62,9 +69,34 @@ async function fetchTopMenus(): Promise<TopMenu[]> {
 
 const LOCATION_PLACEHOLDER = "Choose your delivery location";
 
-type MenuSection = { key: string; title: string; menuBanner?: string; data: Product[] };
+type MenuSection = {
+  key: string;
+  title: string;
+  menuBanner?: string;
+  /** Product count (for header); `data` is paired rows for the grid. */
+  itemCount: number;
+  data: Product[][];
+};
 
-export default function MenuScreen() {
+function chunkProductsForGrid(products: Product[]): Product[][] {
+  const clean = products.filter((p): p is Product => Boolean(p?.id));
+  const rows: Product[][] = [];
+  for (let i = 0; i < clean.length; i += 2) {
+    rows.push(clean.slice(i, i + 2));
+  }
+  return rows;
+}
+
+function gridRowKey(pair: Product[] | undefined | null, index: number): string {
+  const row = pair ?? [];
+  const a = row[0]?.id;
+  const b = row[1]?.id;
+  if (a && b) return `${a}-${b}`;
+  if (a) return `${a}-solo-${index}`;
+  return `grid-fallback-${index}`;
+}
+
+export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { totalItems } = useCart();
   const { locationData, nearestOutlet, setLocationData, getCurrentLocation, isLoadingLocation } = useLocation();
@@ -72,6 +104,7 @@ export default function MenuScreen() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [menus, setMenus] = useState<TopMenu[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [itemOptionsRows, setItemOptionsRows] = useState<ItemOptionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -84,9 +117,23 @@ export default function MenuScreen() {
   const [locationOpen, setLocationOpen] = useState(false);
   const [profileLoginOpen, setProfileLoginOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
+  const [categoryOrigin, setCategoryOrigin] = useState<CategoryOriginRect | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
 
-  const listRef = useRef<SectionList<Product, MenuSection>>(null);
+  const listRef = useRef<SectionList<Product[], MenuSection>>(null);
+  const categoryFabRef = useRef<View>(null);
+  /** While set, ignore viewability updates unless they match this category (picker scroll vs list fighting). */
+  const programmaticCategoryTargetRef = useRef<string | null>(null);
+  const programmaticCategoryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (programmaticCategoryTimerRef.current) {
+        clearTimeout(programmaticCategoryTimerRef.current);
+        programmaticCategoryTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -105,7 +152,24 @@ export default function MenuScreen() {
           .sort((a: Category, b: Category) => (a.display_order ?? 99) - (b.display_order ?? 99));
         setMenus(topMenus);
         setCategories(cats);
-        setProducts(prodRes.data || []);
+        const plist = (prodRes.data || []) as Product[];
+        const pids = plist.map((p) => p.id).filter(Boolean);
+        let mappedOpts: ItemOptionRow[] = [];
+        if (pids.length > 0) {
+          const { data: optData, error: optErr } = await supabase.from("item_options").select("*").in("product_id", pids);
+          if (optErr) throw optErr;
+          mappedOpts = (optData || []).map((r: Record<string, unknown>) => ({
+            id: String(r.id),
+            product_id: String(r.product_id),
+            option_type: String(r.option_type),
+            label: String(r.label),
+            price_delta: Number(r.price_delta) || 0,
+            is_default: Boolean(r.is_default),
+            display_order: Number(r.display_order) || 0,
+          }));
+        }
+        setProducts(plist);
+        setItemOptionsRows(mappedOpts);
         if (cats.length > 0) setActiveCategoryId(cats[0].id);
       } catch (e) {
         console.error(e);
@@ -115,6 +179,16 @@ export default function MenuScreen() {
       }
     })();
   }, []);
+
+  const itemOptionsByProduct = useMemo(() => {
+    const m = new Map<string, ItemOptionRow[]>();
+    for (const o of itemOptionsRows) {
+      const arr = m.get(o.product_id) ?? [];
+      arr.push(o);
+      m.set(o.product_id, arr);
+    }
+    return m;
+  }, [itemOptionsRows]);
 
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
@@ -133,7 +207,8 @@ export default function MenuScreen() {
   );
 
   const menuGroups = useMemo<MenuGroup[]>(() => {
-    const grouped = new Map<string, MenuGroup & { display_order: number }>();
+    type Acc = MenuGroup & { display_order: number };
+    const grouped = new Map<string, Acc>();
 
     menus.forEach((menu) => {
       grouped.set(menu.id, {
@@ -144,7 +219,7 @@ export default function MenuScreen() {
       });
     });
 
-    const uncategorized: MenuGroup & { display_order: number } = {
+    const uncategorized: Acc = {
       id: "ungrouped",
       name: "Menu",
       categories: [],
@@ -174,18 +249,24 @@ export default function MenuScreen() {
     }));
   }, [menus, visibleCategories]);
 
+  const categoryPickerCategories = useMemo(
+    () => menuGroups.flatMap((g) => g.categories),
+    [menuGroups]
+  );
+
   const sections = useMemo<MenuSection[]>(() => {
     const out: MenuSection[] = [];
     for (const group of menuGroups) {
       let firstInGroup = true;
       for (const cat of group.categories) {
-        const data = filteredProducts.filter((p) => p.category_id === cat.id);
+        const data = filteredProducts.filter((p) => p.category_id === cat.id && p?.id);
         if (data.length === 0) continue;
         out.push({
           key: cat.id,
           title: cat.name,
           menuBanner: firstInGroup ? group.name : undefined,
-          data,
+          itemCount: data.length,
+          data: chunkProductsForGrid(data),
         });
         firstInGroup = false;
       }
@@ -212,14 +293,24 @@ export default function MenuScreen() {
   }, [menuGroups]);
 
   const onViewableItemsChanged = useCallback(
-    ({ viewableItems }: { viewableItems: ViewToken<Product>[] }) => {
+    ({ viewableItems }: { viewableItems: ViewToken<Product[]>[] }) => {
       const first = viewableItems[0];
       const key = first?.section?.key;
-      if (typeof key === "string") {
-        setActiveCategoryId(key);
-        const mid = categoryToMenuId.get(key);
-        if (mid) setActiveMenuId(mid);
+      if (typeof key !== "string") return;
+
+      const pending = programmaticCategoryTargetRef.current;
+      if (pending != null) {
+        if (key !== pending) return;
+        programmaticCategoryTargetRef.current = null;
+        if (programmaticCategoryTimerRef.current) {
+          clearTimeout(programmaticCategoryTimerRef.current);
+          programmaticCategoryTimerRef.current = null;
+        }
       }
+
+      setActiveCategoryId(key);
+      const mid = categoryToMenuId.get(key);
+      if (mid) setActiveMenuId(mid);
     },
     [categoryToMenuId]
   );
@@ -277,8 +368,25 @@ export default function MenuScreen() {
     return { locationCityLine: cityLine, locationAddressLine: addressLine };
   }, [locationData, nearestOutlet]);
 
+  const openCategoryPicker = useCallback(() => {
+    categoryFabRef.current?.measureInWindow((x, y, width, height) => {
+      if (width <= 0 || height <= 0) return;
+      setCategoryOrigin({ x, y, width, height });
+      setCategoryOpen(true);
+    });
+  }, []);
+
+  const closeCategoryPicker = useCallback(() => {
+    setCategoryOpen(false);
+  }, []);
+
   const scrollToCategory = useCallback(
     (id: string) => {
+      if (programmaticCategoryTimerRef.current) {
+        clearTimeout(programmaticCategoryTimerRef.current);
+        programmaticCategoryTimerRef.current = null;
+      }
+      programmaticCategoryTargetRef.current = id;
       setActiveCategoryId(id);
       const parentMenuId = categoryToMenuId.get(id);
       if (parentMenuId) setActiveMenuId(parentMenuId);
@@ -291,13 +399,19 @@ export default function MenuScreen() {
             animated: true,
             viewOffset: 140,
           });
+          programmaticCategoryTimerRef.current = setTimeout(() => {
+            programmaticCategoryTargetRef.current = null;
+            programmaticCategoryTimerRef.current = null;
+          }, 2800);
         } catch {
-          /* SectionList can throw if not measured yet */
+          programmaticCategoryTargetRef.current = null;
         }
+      } else {
+        programmaticCategoryTargetRef.current = null;
       }
-      setCategoryOpen(false);
+      closeCategoryPicker();
     },
-    [categoryToMenuId, sections]
+    [categoryToMenuId, closeCategoryPicker, sections]
   );
 
   const onSelectLocation = useCallback(
@@ -332,10 +446,10 @@ export default function MenuScreen() {
         </Pressable>
       </View>
 
-      <SectionList<Product, MenuSection>
+      <SectionList<Product[], MenuSection>
         ref={listRef}
         sections={sections}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(pair, index) => gridRowKey(pair, index)}
         stickySectionHeadersEnabled={false}
         contentContainerStyle={{ paddingBottom: 120 }}
         showsVerticalScrollIndicator={false}
@@ -367,11 +481,6 @@ export default function MenuScreen() {
                 <Text style={[styles.vegTxt, vegOnly && styles.vegTxtOn]}>Veg only</Text>
               </Pressable>
             </View>
-            {!loading && !error ? (
-              <View style={styles.promo}>
-                <PromoBanner />
-              </View>
-            ) : null}
           </View>
         }
         ListEmptyComponent={
@@ -392,31 +501,50 @@ export default function MenuScreen() {
             ) : null}
             <View style={styles.catHead}>
               <Text style={styles.catTitle}>{section.title}</Text>
-              <Text style={styles.catCount}>({section.data.length})</Text>
+              <Text style={styles.catCount}>({section.itemCount})</Text>
             </View>
           </View>
         )}
-        renderItem={({ item }) => <MenuItemCard product={item} />}
+        renderItem={({ item: pair }) => {
+          const row = (pair ?? []).filter((p): p is Product => Boolean(p?.id));
+          if (row.length === 0) return null;
+          return (
+            <View style={styles.menuGridRow}>
+              {row.map((product) => (
+                <View key={product.id} style={styles.menuGridCell}>
+                  <MenuItemCard product={product} itemOptions={itemOptionsByProduct.get(product.id) ?? []} />
+                </View>
+              ))}
+              {row.length === 1 ? <View style={styles.menuGridCell} /> : null}
+            </View>
+          );
+        }}
       />
 
-      {!cartOpen && (
-        <View style={[styles.fabRow, { bottom: Math.max(16, insets.bottom + 12) }]}>
-          <Pressable style={styles.fabCat} onPress={() => setCategoryOpen(true)}>
+      <View style={[styles.fabWrap, { bottom: Math.max(16, insets.bottom + 12) }]}>
+        <View
+          ref={categoryFabRef}
+          collapsable={false}
+          style={[styles.fabCat, categoryOpen && styles.fabCatHidden]}
+        >
+          <Pressable style={StyleSheet.absoluteFill} onPress={openCategoryPicker} />
+          <View pointerEvents="none" style={styles.fabCatRow}>
             <View style={styles.fabCatIcon}>
               <Text style={styles.fabCatLetter}>{activeCategoryLabel.charAt(0).toUpperCase()}</Text>
             </View>
             <Text style={styles.fabCatLabel} numberOfLines={1}>
               {activeCategoryLabel}
             </Text>
-          </Pressable>
-          <View style={styles.fabSep} />
+          </View>
+        </View>
+        {!cartOpen ? (
           <Pressable style={styles.fabCart} onPress={() => setCartOpen(true)}>
             <Text style={styles.fabCartText}>Cart{totalItems > 0 ? ` (${totalItems})` : ""}</Text>
           </Pressable>
-        </View>
-      )}
+        ) : null}
+      </View>
 
-      <LocationPickerModal
+      <StartScreenFlow
         visible={locationOpen}
         onClose={() => setLocationOpen(false)}
         onSelectLocation={onSelectLocation}
@@ -427,21 +555,22 @@ export default function MenuScreen() {
         showBackButton={false}
       />
 
-      <LocationPickerModal
+      <StartScreenFlow
         visible={profileLoginOpen}
         onClose={() => setProfileLoginOpen(false)}
-        onSelectLocation={async (): Promise<void> => {}}
-        onUseCurrentLocation={async (): Promise<void> => {}}
+        onSelectLocation={async (): Promise<void> => { }}
+        onUseCurrentLocation={async (): Promise<void> => { }}
         requireAuthFirst
         authOnly
       />
 
       <CategoryPickerSheet
         visible={categoryOpen}
-        onClose={() => setCategoryOpen(false)}
-        menuGroups={menuGroups}
+        onClose={closeCategoryPicker}
+        categories={categoryPickerCategories}
         activeCategoryId={activeCategoryId}
         onSelectCategory={scrollToCategory}
+        originRect={categoryOrigin}
       />
 
       <CartSheet
@@ -524,12 +653,25 @@ const styles = StyleSheet.create({
   catCount: { fontSize: 12, color: colors.textMuted, fontWeight: "500" },
   err: { textAlign: "center", marginTop: 40, color: colors.textSecondary, fontWeight: "600" },
   empty: { textAlign: "center", marginVertical: 40, color: colors.textSecondary },
-  fabRow: {
+  menuGridRow: {
+    flexDirection: "row",
+    paddingHorizontal: 16,
+    gap: 10,
+    marginBottom: 10,
+  },
+  menuGridCell: { flex: 1, minWidth: 0 },
+  fabWrap: {
     position: "absolute",
     alignSelf: "center",
     flexDirection: "row",
     alignItems: "center",
+    gap: 10,
     maxWidth: "92%",
+  },
+  fabCat: {
+    flex: 1,
+    minWidth: 0,
+    maxWidth: "68%",
     borderRadius: 999,
     borderWidth: 1,
     borderColor: colors.border,
@@ -538,9 +680,21 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 16,
     elevation: 8,
-    overflow: "hidden",
+    position: "relative",
   },
-  fabCat: { flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 12, paddingVertical: 12, maxWidth: "62%" },
+  fabCatHidden: {
+    opacity: 0,
+  },
+  fabCatRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingLeft: 12,
+    paddingRight: 14,
+    paddingVertical: 12,
+    flex: 1,
+    minWidth: 0,
+  },
   fabCatIcon: {
     width: 28,
     height: 28,
@@ -551,7 +705,17 @@ const styles = StyleSheet.create({
   },
   fabCatLetter: { fontSize: 11, fontWeight: "700", color: colors.textSecondary },
   fabCatLabel: { flex: 1, fontSize: 13, fontWeight: "700", color: colors.textPrimary },
-  fabSep: { width: StyleSheet.hairlineWidth, height: 28, backgroundColor: colors.border },
-  fabCart: { paddingHorizontal: 16, paddingVertical: 12 },
+  fabCart: {
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+    shadowColor: "#000",
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 8,
+  },
   fabCartText: { fontSize: 13, fontWeight: "700", color: colors.textPrimary },
 });
